@@ -11,8 +11,6 @@ requires-python = ">=3.11"
 dependencies = [
   "PySide6>=6.8",
   "bleak>=0.22",
-  "SQLAlchemy>=2.0",
-  "psycopg[binary]>=3.2",
 ]
 
 [project.scripts]
@@ -20,3 +18,6 @@ cados = "cados.app:run"
 
 [tool.setuptools]
 packages = ["cados", "cados.core", "cados.models", "cados.services", "cados.ui"]
+
+[tool.setuptools.package-data]
+cados = ["assets/*.png", "assets/workouts/*.json"]

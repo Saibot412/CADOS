@@ -41,13 +41,16 @@ Cados/
 │   │   ├── workout_engine.py  # Training-Logik & Zustandsmaschine
 │   │   ├── training_metrics.py # Zeitgewichtete Messwerte & Kennzahlen
 │   │   ├── workout_loader.py  # JSON-Workout-Parser
+│   │   ├── zwo_importer.py     # Zwift-ZWO-Import
 │   │   └── zones.py          # Leistungszonen (Z1-Z7)
 │   ├── models/
 │   │   ├── profile.py        # Benutzerprofil
 │   │   ├── session.py        # Session-Aufzeichnungen
 │   │   └── workout.py        # Workout-Datenmodelle
 │   ├── services/
-│   │   ├── storage.py        # Datenspeicherung (JSON/DB)
+│   │   ├── storage.py        # Lokale SQLite-Datenbank
+│   │   ├── workout_catalog.py # Mitgelieferte, lokale und Online-Workouts
+│   │   ├── workout_library.py # HTTPS-Client der zentralen Bibliothek
 │   │   ├── trainer.py        # Bluetooth-Trainersteuerung
 │   │   ├── trainer_control.py # Befehls-Worker mit Wiederholungsversuchen
 │   │   ├── async_loop.py     # Gemeinsamer Bluetooth-Eventloop
@@ -59,15 +62,19 @@ Cados/
 │   │   ├── dialogs.py        # Profil-Dialog
 │   │   ├── theme.py          # QSS-Stylesheet (Light-Theme)
 │   │   └── widgets.py        # Workout-Timeline-Widget
-│   └── assets/               # Icons & Logo
-├── workouts/                  # Workout-JSON-Dateien
-├── data/                      # Einstellungen, Profile, Sessions
-└── logs/                      # Log-Dateien
+│   └── assets/               # Icons, Logo & mitgelieferte Workouts
+├── server/                    # Optionale zentrale Workout-Bibliothek
+└── tests/                     # Automatische Tests
 ```
 
 ## Workout-Dateien
 
-Workouts werden als JSON-Dateien im `workouts/`-Ordner abgelegt. Cados erkennt neue Dateien automatisch.
+Über **Importieren** können CADOS-JSON-Dateien und übliche Zwift-Workouts (`.zwo`)
+direkt ausgewählt werden. Der Import landet in der lokalen SQLite-Datenbank; die
+Originaldatei muss anschließend nicht an ihrem bisherigen Ort bleiben. Unterstützt
+werden in ZWO die Bausteine `Warmup`, `Cooldown`, `Ramp`, `SteadyState` und
+`IntervalsT`. Freies Fahren und feste Watt-ZWO-Dateien werden mit einer verständlichen
+Fehlermeldung abgewiesen, weil sie nicht eindeutig in den ERG-Ablauf von CADOS passen.
 
 ### JSON-Schema
 
@@ -197,25 +204,27 @@ Jeder Benutzer hat einen Namen und einen FTP-Wert. Der FTP-Wert wird zur Berechn
 
 ## Einstellungen
 
-Die Datei `data/settings.json` enthält:
+Die Einstellungsdatei im lokalen CADOS-Datenordner enthält:
 
 ```json
 {
-  "database_url": null,
   "tick_interval_ms": 250,
   "trainer_scan_timeout_sec": 5,
   "default_ftp": 250,
-  "theme_mode": "light"
+  "theme_mode": "light",
+  "workout_library_url": "",
+  "workout_library_token": ""
 }
 ```
 
 | Einstellung | Beschreibung | Standard |
 |-------------|-------------|----------|
-| `database_url` | PostgreSQL-URL (optional, null = JSON-Speicher) | null |
 | `tick_interval_ms` | UI-Update-Intervall in ms | 250 |
 | `trainer_scan_timeout_sec` | Bluetooth-Scan-Timeout | 5 |
 | `default_ftp` | Standard-FTP für neue Profile | 250 |
 | `theme_mode` | Farbschema (nur "light") | light |
+| `workout_library_url` | HTTPS-Adresse der zentralen Bibliothek | leer |
+| `workout_library_token` | Gemeinsames Zugriffstoken | leer |
 
 ## Trainer-Verbindung
 
@@ -231,7 +240,13 @@ Die Gerätesuche liest Service-UUIDs aus den Advertising-Daten gemäß der
 
 ## Datenspeicherung
 
-Standardmäßig werden alle Daten als JSON-Dateien in `data/` gespeichert. Optional kann eine PostgreSQL-Datenbank über `database_url` in den Einstellungen oder die Umgebungsvariable `CADOS_DATABASE_URL` konfiguriert werden.
+Profile, Sessions, Messwerte und importierte Workouts liegen in einer lokalen
+SQLite-Datei. Unter macOS ist das standardmäßig
+`~/Library/Application Support/Cados/cados.sqlite3`, unter Windows
+`%LOCALAPPDATA%\Cados\cados.sqlite3`. SQLite benötigt keinen Server und überträgt
+keine Daten. Beim ersten Start werden vorhandene `data/profiles.json` und
+`data/sessions.json` einmalig und atomar übernommen. Die JSON-Dateien bleiben als
+Rückfallkopie erhalten.
 
 
 Sessions enthalten zusätzlich den Trainingsstart, den verwendeten FTP-Wert,
@@ -247,10 +262,21 @@ ebenfalls versucht. Ein erzwungenes Prozessende oder Stromausfall kann eine noch
 laufende, nicht gespeicherte Session weiterhin verlieren.
 
 Alte Sessions bleiben lesbar; damals nicht gespeicherte Messdaten können nicht
-nachträglich rekonstruiert werden. Der PostgreSQL-Mirror ergänzt die benötigten
-Spalten beim Initialisieren. Ein Fehler bei der Spiegelung macht eine erfolgreiche
-lokale Speicherung nicht rückgängig. Beschädigte lokale JSON-Dateien werden nicht
-stillschweigend mit leeren Daten überschrieben.
+nachträglich rekonstruiert werden. Beschädigte Altdaten werden nicht überschrieben
+und die Migration wird in diesem Fall nicht als abgeschlossen markiert.
+
+## Zentrale Workout-Bibliothek
+
+Die Schaltfläche **Server** speichert URL und Zugriffstoken. **Online laden** holt
+den Katalog; bei konfiguriertem Server geschieht dies zusätzlich beim App-Start.
+Ein über **Importieren** hinzugefügtes Workout wird lokal gespeichert und danach im
+Hintergrund auf dem Server veröffentlicht. Scheitert der Upload, bleibt die lokale
+Kopie erhalten. Profile und gefahrene Trainings werden dabei nicht hochgeladen.
+
+Der Server in `server/` verwendet die bereits vorhandene PostgreSQL-Datenbank und
+stellt eine kleine, token-geschützte API bereit. Hinweise zu Docker, HTTPS und den
+Umgebungsvariablen stehen in `server/README.md`. Ohne eingerichteten Server bleibt
+die App vollständig offline benutzbar.
 
 ## Entwicklung und Tests
 
@@ -273,12 +299,12 @@ mit `QT_QPA_PLATFORM=offscreen`; ohne installiertes PySide6 werden nur diese Tes
 Wiederholungsversuche, Verbindungswechsel, Auto-Pause, Session-Speicherung beim
 Schließen und Abwärtskompatibilität der Aufzeichnungen.
 
-Ein Test mit einem echten Trainer und einer echten PostgreSQL-Instanz ist davon
+Ein Test mit einem echten Trainer und einer echten Server-PostgreSQL-Instanz ist davon
 getrennt erforderlich, um das Verhalten dieser Geräte bzw. Dienste zu bestätigen.
 
 ## Versionsverwaltung
 
-Quellcode, Tests, Workout-Vorlagen und der macOS-Starter gehören ins Repository.
-`data/`, `logs/`, virtuelle Umgebungen, Build-Ausgaben und lokale Zugangsdaten
+Quellcode, Tests, Workout-Vorlagen und die Starter gehören ins Repository.
+`data/`, `logs/`, SQLite-Dateien, virtuelle Umgebungen, Build-Ausgaben und Zugangsdaten
 werden durch `.gitignore` ausgeschlossen. Persönliche Trainingsdaten müssen
 separat gesichert werden.

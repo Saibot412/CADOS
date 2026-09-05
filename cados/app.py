@@ -8,10 +8,11 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from cados.config import AppConfig
-from cados.core.workout_loader import WorkoutLoader
 from cados.logging_utils import configure_logging
 from cados.services.storage import DataStore
 from cados.services.trainer import TrainerController
+from cados.services.workout_catalog import WorkoutCatalog
+from cados.services.workout_library import WorkoutLibraryClient
 from cados.ui.main_window import MainWindow
 from cados.ui.theme import apply_theme
 
@@ -39,11 +40,22 @@ def run() -> int:
     if config.paths.app_icon_path.exists():
         app.setWindowIcon(QIcon(str(config.paths.app_icon_path)))
 
-    loader = WorkoutLoader(config.paths.workouts_dir)
-    store = DataStore(config.paths.profiles_path, config.paths.sessions_path, config.database_url)
+    store = DataStore(config.paths.database_path)
+    migrated = store.migrate_legacy_json(
+        config.paths.legacy_profiles_path, config.paths.legacy_sessions_path
+    )
+    if migrated["profiles"] or migrated["sessions"]:
+        logger.info("Altdaten nach SQLite übernommen: %s", migrated)
+    loader = WorkoutCatalog(config.paths.bundled_workouts_dir, store)
+    library = WorkoutLibraryClient(
+        config.workout_library_url, config.workout_library_token
+    )
     trainer = TrainerController(config.trainer_scan_timeout_sec)
 
-    window = MainWindow(config=config, loader=loader, store=store, trainer=trainer)
+    window = MainWindow(
+        config=config, loader=loader, store=store, trainer=trainer,
+        workout_library=library,
+    )
     if config.paths.app_icon_path.exists():
         window.setWindowIcon(QIcon(str(config.paths.app_icon_path)))
     app.aboutToQuit.connect(window.shutdown)

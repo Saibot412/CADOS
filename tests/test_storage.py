@@ -1,54 +1,84 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
+from cados.models.profile import UserProfile
 from cados.models.session import WorkoutSessionRecord
-from cados.services.storage import DataStore, LocalJsonStore
+from cados.services.storage import DataStore
 
 
 class StorageTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        root = Path(self.directory.name)
-        self.store = LocalJsonStore(root / "profiles.json", root / "sessions.json")
+        self.root = Path(self.directory.name)
+        self.store = DataStore(self.root / "cados.sqlite3")
 
     def session(self):
-        return WorkoutSessionRecord(user_id="test", user_name="Tester", workout_name="Test",
-                                    duration_sec=10, status="stopped", trainer_source="fake",
-                                    ftp_watts=250, started_at="2026-01-01T12:00:00+00:00",
-                                    workout_elapsed_sec=60, metrics={"avg_watts": 200},
-                                    samples=[{"duration_sec": 10, "watts": 200, "heart_rate": 140}])
+        return WorkoutSessionRecord(
+            user_id="test", user_name="Tester", workout_name="Test",
+            duration_sec=10, status="stopped", trainer_source="fake",
+            ftp_watts=250, started_at="2026-01-01T12:00:00+00:00",
+            workout_elapsed_sec=60, metrics={"avg_watts": 200},
+            samples=[{"duration_sec": 10, "watts": 200, "heart_rate": 140}],
+        )
 
-    def test_new_fields_survive_save_reload_and_retry_without_duplicates(self):
+    def test_profile_and_session_round_trip_without_duplicates(self):
+        profile = UserProfile(name="Tester", ftp=250)
+        self.store.save_profile(profile)
+        self.store.save_profile(profile)
         session = self.session()
         self.store.save_session(session)
         self.store.save_session(session)
-        records = self.store.list_sessions()
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].to_dict(), session.to_dict())
+        self.assertEqual([item.to_dict() for item in self.store.list_profiles()], [profile.to_dict()])
+        self.assertEqual([item.to_dict() for item in self.store.list_sessions()], [session.to_dict()])
 
-    def test_legacy_sessions_remain_readable(self):
-        old = self.session().to_dict()
-        for key in ["ftp_watts", "started_at", "workout_elapsed_sec", "metrics", "samples"]:
-            old.pop(key)
-        self.store.sessions_path.write_text(json.dumps([old]))
-        session = self.store.list_sessions()[0]
-        self.assertEqual(session.duration_sec, 10)
-        self.assertIsNone(session.ftp_watts)
-        self.assertEqual(session.samples, [])
+    def test_samples_are_kept_separately_and_can_be_omitted(self):
+        session = self.session()
+        self.store.save_session(session)
+        with self.store.connection() as connection:
+            payload = json.loads(connection.execute("SELECT payload FROM sessions").fetchone()["payload"])
+            self.assertNotIn("samples", payload)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM session_samples").fetchone()[0], 1)
+        self.assertEqual(self.store.list_sessions(include_samples=False)[0].samples, [])
 
-    def test_corrupt_file_is_not_overwritten(self):
-        self.store.sessions_path.write_text("[broken")
+    def test_legacy_json_migration_is_atomic_and_runs_once(self):
+        profiles = self.root / "profiles.json"
+        sessions = self.root / "sessions.json"
+        profile = UserProfile(name="Alt", ftp=220)
+        session = self.session()
+        profiles.write_text(json.dumps([profile.to_dict()]))
+        sessions.write_text(json.dumps([session.to_dict()]))
+        self.assertEqual(self.store.migrate_legacy_json(profiles, sessions), {"profiles": 1, "sessions": 1})
+        self.assertEqual(self.store.migrate_legacy_json(profiles, sessions), {"profiles": 0, "sessions": 0})
+        self.assertTrue(profiles.exists())
+        self.assertTrue(sessions.exists())
+
+    def test_corrupt_legacy_json_does_not_mark_migration_done(self):
+        profiles = self.root / "profiles.json"
+        sessions = self.root / "sessions.json"
+        profiles.write_text("[broken")
+        sessions.write_text("[]")
         with self.assertRaises(ValueError):
-            self.store.save_session(self.session())
-        self.assertEqual(self.store.sessions_path.read_text(), "[broken")
+            self.store.migrate_legacy_json(profiles, sessions)
+        self.assertFalse(self.store.migration_done("legacy_profiles_sessions_v1"))
 
-    def test_mirror_failure_does_not_fail_local_session_save(self):
-        store = DataStore(self.store.profiles_path, self.store.sessions_path, None)
-        with patch.object(store.postgres, "save_session", side_effect=OSError("database offline")):
-            with self.assertLogs("cados.services.storage", level="ERROR"):
-                store.save_session(self.session())
-        self.assertEqual(len(store.local.list_sessions()), 1)
+    def test_workouts_deduplicate_by_content_and_update_by_source(self):
+        first = {"name": "One", "blocks": [{"type": "steady", "duration_sec": 60, "target_watts": 100}]}
+        second = {"name": "Two", "blocks": [{"type": "steady", "duration_sec": 60, "target_watts": 120}]}
+        identifier = self.store.save_workout(first, "same.json")
+        self.assertEqual(self.store.save_workout(first, "copy.json"), identifier)
+        self.assertEqual(self.store.save_workout(second, "same.json"), identifier)
+        self.assertEqual(len(self.store.list_workouts()), 1)
+        self.assertEqual(self.store.list_workouts()[0]["payload"]["name"], "Two")
+
+    def test_backup_is_a_valid_independent_database(self):
+        self.store.save_profile(UserProfile(name="Backup", ftp=250))
+        backup = self.root / "backup.sqlite3"
+        self.store.backup(backup)
+        reopened = DataStore(backup)
+        self.assertEqual(reopened.list_profiles()[0].name, "Backup")
+        with sqlite3.connect(backup) as connection:
+            self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")

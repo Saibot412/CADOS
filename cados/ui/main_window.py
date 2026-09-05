@@ -7,9 +7,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QFileSystemWatcher, QObject, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QLabel,
     QListWidgetItem,
     QMessageBox,
@@ -19,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from cados.config import AppConfig
 from cados.core.workout_engine import TrainingSnapshot, WorkoutEngine
-from cados.core.workout_loader import WorkoutLoader, WorkoutValidationError
+from cados.core.workout_loader import WorkoutValidationError
 from cados.core.hr_zones import HR_ZONES, hr_zone_for_bpm, hr_zone_range_label, hr_zone_pct_label
 from cados.core.zones import (
     POWER_ZONES,
@@ -36,7 +37,9 @@ from cados.models.workout import DEFAULT_FTP_WATTS, ResolvedWorkout, WorkoutTemp
 from cados.services.hr_monitor import HRMonitorService
 from cados.services.storage import DataStore
 from cados.services.trainer import TrainerController, TrainerDevice
-from cados.ui.dialogs import FTPResultDialog, ProfileDialog
+from cados.services.workout_catalog import WorkoutCatalog
+from cados.services.workout_library import WorkoutLibraryClient
+from cados.ui.dialogs import FTPResultDialog, ProfileDialog, WorkoutLibraryDialog
 from cados.ui.main_window_view import MainWindowView
 from cados.ui.library_widgets import (
     format_duration,
@@ -68,15 +71,24 @@ class AutoConnectResult:
 class MainWindowSignals(QObject):
     auto_connect_finished = Signal(object)
     hr_connect_finished = Signal(object)
+    library_finished = Signal(object)
 
 
 class MainWindow(MainWindowView):
-    def __init__(self, config: AppConfig, loader: WorkoutLoader, store: DataStore, trainer: TrainerController):
+    def __init__(
+        self,
+        config: AppConfig,
+        loader: WorkoutCatalog,
+        store: DataStore,
+        trainer: TrainerController,
+        workout_library: WorkoutLibraryClient | None = None,
+    ):
         super().__init__()
         self.config = config
         self.loader = loader
         self.store = store
         self.trainer = trainer
+        self.workout_library = workout_library or WorkoutLibraryClient("", "")
         self.hr_monitor = HRMonitorService()
         self.engine = WorkoutEngine(trainer, self.hr_monitor)
         self._brand_logo_pixmap = self._load_brand_logo_pixmap()
@@ -97,6 +109,7 @@ class MainWindow(MainWindowView):
         self._hr_auto_connect_status = "initializing"
         self._shutting_down = False
         self._next_session_save_attempt = 0.0
+        self._library_request_in_progress = False
 
         self.setWindowTitle("Cados")
         self._fit_to_screen()
@@ -106,11 +119,9 @@ class MainWindow(MainWindowView):
         self._connect_signals()
         self._signals.auto_connect_finished.connect(self._handle_auto_connect_finished)
         self._signals.hr_connect_finished.connect(self._handle_hr_connect_finished)
+        self._signals.library_finished.connect(self._handle_library_finished)
         # Global key event filter to catch keys even when child widgets have focus
         QApplication.instance().installEventFilter(self)
-
-        self.file_watcher = QFileSystemWatcher([str(self.config.paths.workouts_dir)], self)
-        self.file_watcher.directoryChanged.connect(lambda _: self._reload_workouts())
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._on_tick)
@@ -128,6 +139,8 @@ class MainWindow(MainWindowView):
         self._reload_workouts()
         self._refresh_status_labels()
         self._apply_training_snapshot(self.engine.snapshot())
+        if self.workout_library.enabled:
+            QTimer.singleShot(500, self._sync_workouts)
 
     def _apply_zone_summary_rows(
         self,
@@ -203,6 +216,9 @@ class MainWindow(MainWindowView):
 
     def _connect_signals(self) -> None:
         self.refresh_workouts_button.clicked.connect(self._reload_workouts)
+        self.import_workout_button.clicked.connect(self._import_workout)
+        self.sync_workouts_button.clicked.connect(self._sync_workouts)
+        self.library_settings_button.clicked.connect(self._configure_workout_library)
         self.workout_list.currentItemChanged.connect(lambda current, _: self._display_selected_workout(current))
         self.start_workout_button.clicked.connect(self._start_selected_workout)
         self.prev_block_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.previous_block()))
@@ -261,6 +277,115 @@ class MainWindow(MainWindowView):
             self.store.save_profile(dialog.build_profile())
             self._reload_profiles()
 
+    def _configure_workout_library(self) -> None:
+        dialog = WorkoutLibraryDialog(
+            self.workout_library.base_url, self.workout_library.token, self
+        )
+        if not dialog.exec():
+            return
+        url, token = dialog.values()
+        self.config.workout_library_url = url
+        self.config.workout_library_token = token
+        self.config.save_settings({
+            "workout_library_url": url,
+            "workout_library_token": token,
+        })
+        self.workout_library = WorkoutLibraryClient(url, token)
+        if self.workout_library.enabled:
+            self._sync_workouts()
+        else:
+            self.statusBar().showMessage("Zentrale Workout-Bibliothek deaktiviert", 5000)
+
+    def _import_workout(self) -> None:
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Workout importieren",
+            "",
+            "Workout-Dateien (*.json *.zwo);;CADOS JSON (*.json);;Zwift Workout (*.zwo)",
+        )
+        if not file_name:
+            return
+        try:
+            workout = self.loader.import_file(Path(file_name))
+        except (OSError, UnicodeError, ValueError, WorkoutValidationError) as exc:
+            QMessageBox.warning(self, "Import fehlgeschlagen", str(exc))
+            return
+        self._reload_workouts()
+        self._select_workout(workout.source_path.name)
+        if self.workout_library.enabled:
+            self._start_library_worker("publish", workout)
+            self.statusBar().showMessage(
+                f"{workout.name} importiert · Veröffentlichung läuft …"
+            )
+        else:
+            self.statusBar().showMessage(
+                f"{workout.name} lokal importiert · Server noch nicht eingerichtet", 8000
+            )
+
+    def _select_workout(self, source_name: str) -> None:
+        for row in range(self.workout_list.count()):
+            item = self.workout_list.item(row)
+            if item is None or bool(item.data(WORKOUT_ITEM_HEADER_ROLE)):
+                continue
+            if Path(str(item.data(Qt.UserRole))).name == source_name:
+                self.workout_list.setCurrentItem(item)
+                return
+
+    def _sync_workouts(self) -> None:
+        if not self.workout_library.enabled:
+            self._configure_workout_library()
+            return
+        self._start_library_worker("sync")
+        self.statusBar().showMessage("Online-Workouts werden geladen …")
+
+    def _start_library_worker(self, action: str, workout: WorkoutTemplate | None = None) -> None:
+        if self._library_request_in_progress:
+            self.statusBar().showMessage("Eine Bibliotheksanfrage läuft bereits", 4000)
+            return
+        self._library_request_in_progress = True
+        self.sync_workouts_button.setEnabled(False)
+        threading.Thread(
+            target=self._run_library_worker,
+            args=(action, workout),
+            daemon=True,
+        ).start()
+
+    def _run_library_worker(self, action: str, workout: WorkoutTemplate | None) -> None:
+        result: dict[str, object] = {"action": action, "ok": False}
+        try:
+            if action == "sync":
+                result["count"] = self.loader.sync(self.workout_library)
+            elif action == "publish" and workout is not None:
+                remote = self.workout_library.publish(workout)
+                self.loader.save_remote(remote)
+                result["name"] = workout.name
+            result["ok"] = True
+        except Exception as exc:
+            logger.warning("Workout-Bibliothek fehlgeschlagen: %s", exc)
+            result["error"] = str(exc)
+        if not self._shutting_down:
+            self._signals.library_finished.emit(result)
+
+    def _handle_library_finished(self, result: dict[str, object]) -> None:
+        self._library_request_in_progress = False
+        self.sync_workouts_button.setEnabled(True)
+        if result.get("ok"):
+            self._reload_workouts()
+            if result.get("action") == "sync":
+                self.statusBar().showMessage(
+                    f"{result.get('count', 0)} Online-Workouts aktualisiert", 6000
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"{result.get('name', 'Workout')} zentral gespeichert", 6000
+                )
+        else:
+            QMessageBox.warning(
+                self,
+                "Workout-Bibliothek",
+                str(result.get("error") or "Unbekannter Fehler"),
+            )
+
     def _reload_workouts(self) -> None:
         selected_key = None
         current_item = self.workout_list.currentItem()
@@ -271,7 +396,6 @@ class MainWindow(MainWindowView):
         self.workout_list.clear()
         current_category: str | None = None
         for workout in self.workouts:
-            self.store.sync_workout(workout)
             category = workout.category.strip() or "Sonstiges"
             if category != current_category:
                 current_category = category
@@ -380,7 +504,7 @@ class MainWindow(MainWindowView):
 
     def _clear_preview(self) -> None:
         self.preview_name_label.setText("Kein Workout gewählt")
-        self.preview_description_label.setText("Lege eine JSON-Datei in den Ordner workouts/ oder wähle links ein Workout.")
+        self.preview_description_label.setText("Importiere eine JSON- oder ZWO-Datei oder wähle links ein Workout.")
         self.preview_duration_label.setText("-")
         self.preview_duration_label.setVisible(False)
         self._update_preview_workout_info(None)
@@ -397,7 +521,7 @@ class MainWindow(MainWindowView):
 
     def _reload_sessions(self) -> None:
         user_id = self.current_profile.id if self.current_profile else None
-        self.session_records = self.store.list_sessions(user_id)
+        self.session_records = self.store.list_sessions(user_id, include_samples=False)
         self.session_table.setRowCount(len(self.session_records))
 
         for row, session in enumerate(self.session_records):
@@ -433,12 +557,9 @@ class MainWindow(MainWindowView):
 
     def _workout_from_session(self, session: WorkoutSessionRecord) -> WorkoutTemplate | None:
         if session.workout_file_name:
-            candidate = self.config.paths.workouts_dir / session.workout_file_name
-            if candidate.exists():
-                try:
-                    return self.loader.load_path(candidate)
-                except (OSError, WorkoutValidationError, ValueError) as exc:
-                    logger.warning("Workout aus Sessiondatei konnte nicht geladen werden: %s", exc)
+            candidate = self.loader.get_by_source_name(session.workout_file_name)
+            if candidate is not None:
+                return candidate
 
         if session.workout_payload:
             source_name = session.workout_file_name or f"history_{session.id}.json"
@@ -707,7 +828,7 @@ class MainWindow(MainWindowView):
         if not force and time.monotonic() < self._next_session_save_attempt:
             return False
         try:
-            self.store.save_session(session, self.engine.workout_template)
+            self.store.save_session(session)
         except Exception:
             logger.exception("Session konnte nicht gespeichert werden; bleibt für erneuten Versuch erhalten.")
             self._next_session_save_attempt = time.monotonic() + 5.0

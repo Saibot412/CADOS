@@ -15,8 +15,8 @@ except ImportError:
     QApplication = None
 
 from cados.config import AppConfig
-from cados.core.workout_loader import WorkoutLoader
 from cados.services.storage import DataStore
+from cados.services.workout_catalog import WorkoutCatalog
 from fakes import FakeHRMonitor, FakeTrainer
 
 
@@ -30,12 +30,14 @@ class MainWindowTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         config = AppConfig.load(Path(self.directory.name))
-        (config.paths.workouts_dir / "test.json").write_text(json.dumps({
+        config.paths.bundled_workouts_dir.mkdir(parents=True, exist_ok=True)
+        (config.paths.bundled_workouts_dir / "test.json").write_text(json.dumps({
             "name": "Test", "blocks": [{"type": "steady", "duration_sec": 60, "target_watts": 200}]}))
-        self.store = DataStore(config.paths.profiles_path, config.paths.sessions_path, None)
+        self.store = DataStore(config.paths.database_path)
+        catalog = WorkoutCatalog(config.paths.bundled_workouts_dir, self.store)
         self.trainer = FakeTrainer()
         with patch("cados.ui.main_window.HRMonitorService", FakeHRMonitor):
-            self.window = MainWindow(config, WorkoutLoader(config.paths.workouts_dir), self.store, self.trainer)
+            self.window = MainWindow(config, catalog, self.store, self.trainer)
         for timer in [self.window.timer, self.window.reconnect_timer, self.window.hr_reconnect_timer]:
             timer.stop()
         self.addCleanup(self.window.shutdown)

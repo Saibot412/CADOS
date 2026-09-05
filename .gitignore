@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+!server/.env.example
 
 # Python environments, caches and build output
 .venv/

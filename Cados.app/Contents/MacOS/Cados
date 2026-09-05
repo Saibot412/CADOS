@@ -74,8 +74,6 @@ fi
 if ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
 import PySide6
 import bleak
-import sqlalchemy
-import psycopg
 PY
 then
   {
