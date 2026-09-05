@@ -1,0 +1,19 @@
+{
+  "name": "Tempo 3x15",
+  "description": "Tempo-Workout mit hoher aerober Arbeit und moderater Ermüdung.",
+  "author": "CADOS",
+  "category": "Tempo / Sweet Spot",
+  "sort_order": 10,
+  "best_for": "Muskel-Ausdauer, steady climbing und längere Belastungen unterhalb der Schwelle.",
+  "when_to_do": "Wenn du einen mittelharten Reiz suchst, aber nicht komplett an die Schwelle gehen willst.",
+  "skip_if": "Wenn du schon einen harten Outdoor-Tag hattest oder stattdessen einen klaren Schwellenreiz brauchst.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 720, "start_pct_ftp": 0.40, "end_pct_ftp": 0.75, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 1", "duration_sec": 900, "target_pct_ftp": 0.82, "target_cadence": 90 },
+    { "type": "steady", "label": "Recovery 1", "duration_sec": 240, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 2", "duration_sec": 900, "target_pct_ftp": 0.84, "target_cadence": 92 },
+    { "type": "steady", "label": "Recovery 2", "duration_sec": 240, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 3", "duration_sec": 900, "target_pct_ftp": 0.82, "target_cadence": 88 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 600, "start_pct_ftp": 0.70, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

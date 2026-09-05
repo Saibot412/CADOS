@@ -1,0 +1,28 @@
+# Personal profiles, training records, local settings and logs
+/data/
+/logs/
+*.log
+.env
+.env.*
+!.env.example
+
+# Python environments, caches and build output
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local OS/editor files
+.DS_Store
+._*
+.idea/
+.vscode/
+*.tmp

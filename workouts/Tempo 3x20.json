@@ -1,0 +1,19 @@
+{
+  "name": "Tempo 3x20",
+  "description": "Lange Tempo-Blöcke für robuste Ausdauerleistung im Winter.",
+  "author": "CADOS",
+  "category": "Tempo / Sweet Spot",
+  "sort_order": 20,
+  "best_for": "Lange, gleichmäßige Druckarbeit für Berge, Marathon und lange Solofahrten.",
+  "when_to_do": "Wenn du frisch genug für einen substanziellen Reiz bist, aber heute nicht VO2 oder hartes Schwellentraining fahren willst.",
+  "skip_if": "Wenn die Beine sehr müde sind oder bereits viel Tempo draußen gefahren wurde.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 720, "start_pct_ftp": 0.40, "end_pct_ftp": 0.75, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 1", "duration_sec": 1200, "target_pct_ftp": 0.82, "target_cadence": 90 },
+    { "type": "steady", "label": "Recovery 1", "duration_sec": 300, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 2", "duration_sec": 1200, "target_pct_ftp": 0.85, "target_cadence": 92 },
+    { "type": "steady", "label": "Recovery 2", "duration_sec": 300, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Tempo 3", "duration_sec": 1200, "target_pct_ftp": 0.82, "target_cadence": 88 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 480, "start_pct_ftp": 0.70, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

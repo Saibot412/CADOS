@@ -1,0 +1,19 @@
+{
+  "name": "Threshold 3x8",
+  "description": "Schwellen-Workout mit gut kontrollierbarer Belastung.",
+  "author": "CADOS",
+  "category": "Schwelle",
+  "sort_order": 10,
+  "best_for": "Schwellenleistung, lange Anstiege und stabile Leistung an FTP.",
+  "when_to_do": "Wenn du für einen harten Tag bereit bist, aber noch nicht die längere 3x10-Variante willst.",
+  "skip_if": "Wenn du noch nicht ausreichend erholt bist oder in dieser Woche schon genug harte Reize hattest.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 720, "start_pct_ftp": 0.40, "end_pct_ftp": 0.85, "target_cadence": 85 },
+    { "type": "steady", "label": "Threshold 1", "duration_sec": 480, "target_pct_ftp": 0.98, "target_cadence": 90 },
+    { "type": "steady", "label": "Recovery 1", "duration_sec": 240, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Threshold 2", "duration_sec": 480, "target_pct_ftp": 1.00, "target_cadence": 92 },
+    { "type": "steady", "label": "Recovery 2", "duration_sec": 240, "target_pct_ftp": 0.55, "target_cadence": 85 },
+    { "type": "steady", "label": "Threshold 3", "duration_sec": 480, "target_pct_ftp": 0.98, "target_cadence": 90 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 600, "start_pct_ftp": 0.70, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

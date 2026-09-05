@@ -1,0 +1,90 @@
+#!/bin/zsh
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+APP_SUPPORT_DIR="${HOME}/Library/Application Support/Cados"
+VENV_DIR="${APP_SUPPORT_DIR}/.venv"
+LOG_FILE="${APP_SUPPORT_DIR}/launcher.log"
+
+mkdir -p "${APP_SUPPORT_DIR}"
+cd "${PROJECT_DIR}"
+
+show_error() {
+  /usr/bin/osascript -e "display dialog \"$1\" buttons {\"OK\"} default button \"OK\" with icon stop" >/dev/null
+}
+
+is_supported_python() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+}
+
+python_version() {
+  "$1" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+}
+
+find_python() {
+  for candidate in \
+    "/opt/homebrew/bin/python3" \
+    "/usr/local/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/Current/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3" \
+    "$(command -v python3 2>/dev/null)"
+  do
+    if [ -n "${candidate}" ] && [ -x "${candidate}" ] && is_supported_python "${candidate}"; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ ! -x "${VENV_DIR}/bin/python" ]; then
+  PYTHON_BIN="$(find_python || true)"
+  if [ -z "${PYTHON_BIN}" ]; then
+    FOUND_PYTHON="$(command -v python3 2>/dev/null || true)"
+    if [ -n "${FOUND_PYTHON}" ]; then
+      FOUND_VERSION="$(python_version "${FOUND_PYTHON}")"
+      show_error "Cados braucht Python 3.11 oder neuer. Die App findet aktuell Python ${FOUND_VERSION}. Im Terminal kann eine andere Python-Version verfügbar sein."
+    else
+      show_error "Python 3 wurde nicht gefunden. Bitte installiere Python 3.11 oder neuer und starte Cados danach erneut."
+    fi
+    exit 1
+  fi
+
+  {
+    echo "Erstelle Python-Umgebung ..."
+    "${PYTHON_BIN}" -m venv "${VENV_DIR}"
+    "${VENV_DIR}/bin/python" -m pip install --upgrade pip
+    "${VENV_DIR}/bin/python" -m pip install -e .
+  } >>"${LOG_FILE}" 2>&1 || {
+    show_error "Cados konnte die benötigte Python-Umgebung nicht einrichten. Details stehen in ~/Library/Application Support/Cados/launcher.log."
+    exit 1
+  }
+fi
+
+if ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
+import PySide6
+import bleak
+import sqlalchemy
+import psycopg
+PY
+then
+  {
+    echo "Installiere fehlende Cados-Abhängigkeiten ..."
+    "${VENV_DIR}/bin/python" -m pip install -e .
+  } >>"${LOG_FILE}" 2>&1 || {
+    show_error "Cados konnte fehlende Abhängigkeiten nicht installieren. Details stehen in ~/Library/Application Support/Cados/launcher.log."
+    exit 1
+  }
+fi
+
+exec "${VENV_DIR}/bin/python" -m cados >>"${LOG_FILE}" 2>&1

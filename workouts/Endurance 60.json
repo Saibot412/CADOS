@@ -1,0 +1,19 @@
+{
+  "name": "Endurance 60",
+  "description": "Solide Grundlageneinheit für Tage mit begrenzter Zeit.",
+  "author": "CADOS",
+  "category": "Grundlage",
+  "sort_order": 10,
+  "best_for": "Aerobe Basis pflegen, Fettstoffwechsel und ruhige Dauerleistung erhalten.",
+  "when_to_do": "Wenn das Wetter schlecht ist, du nur etwa eine Stunde hast oder einen lockeren bis moderaten Ersatztag indoor brauchst.",
+  "skip_if": "Wenn du sehr frisch bist und stattdessen gezielt Sweet Spot, Schwelle oder VO2 trainieren solltest.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 600, "start_pct_ftp": 0.40, "end_pct_ftp": 0.65, "target_cadence": 85 },
+    { "type": "steady", "label": "Base 1", "duration_sec": 900, "target_pct_ftp": 0.65, "target_cadence": 90 },
+    { "type": "steady", "label": "Cadence Reset", "duration_sec": 120, "target_pct_ftp": 0.65, "target_cadence": 75 },
+    { "type": "steady", "label": "Base 2", "duration_sec": 900, "target_pct_ftp": 0.67, "target_cadence": 92 },
+    { "type": "steady", "label": "Cadence Reset", "duration_sec": 120, "target_pct_ftp": 0.65, "target_cadence": 75 },
+    { "type": "steady", "label": "Base 3", "duration_sec": 480, "target_pct_ftp": 0.68, "target_cadence": 90 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 480, "start_pct_ftp": 0.65, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

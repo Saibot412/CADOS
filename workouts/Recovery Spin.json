@@ -1,0 +1,15 @@
+{
+  "name": "Recovery Spin",
+  "description": "Sehr lockere Regenerationseinheit für Beine und Kreislauf.",
+  "author": "CADOS",
+  "category": "Regeneration",
+  "sort_order": 10,
+  "best_for": "Aktive Erholung, lockeres Durchbewegen und Entlastung nach harten Tagen.",
+  "when_to_do": "Nach einer harten Ausfahrt, nach einem Rennen oder wenn du müde Beine hast und trotzdem kurz rollen willst.",
+  "skip_if": "Wenn du heute einen echten Trainingsreiz setzen willst oder bereits komplett erholt bist.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 300, "start_pct_ftp": 0.40, "end_pct_ftp": 0.50, "target_cadence": 85 },
+    { "type": "steady", "label": "Easy Spin", "duration_sec": 1500, "target_pct_ftp": 0.50, "target_cadence": 90 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 300, "start_pct_ftp": 0.50, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

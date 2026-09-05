@@ -1,0 +1,29 @@
+{
+  "name": "FTP Ramp Test (ERG)",
+  "description": "FTP-Rampentest für Indoor-Standards mit klarer Kadenzvorgabe.",
+  "author": "CADOS",
+  "category": "Tests",
+  "sort_order": 10,
+  "best_for": "FTP neu kalibrieren und die Trainingsbereiche auf einen realistischen Stand bringen.",
+  "when_to_do": "Ausgeruht, idealerweise alle sechs bis acht Wochen oder wenn Sweet Spot und Schwelle klar zu leicht oder zu schwer wirken.",
+  "skip_if": "Wenn du ermüdet bist, die Beine vom Outdoor-Training leer sind oder du nur mal eben eine normale Einheit fahren wolltest.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 720, "start_pct_ftp": 0.40, "end_pct_ftp": 0.70, "target_cadence": 85 },
+    { "type": "steady", "label": "Settle", "duration_sec": 120, "target_pct_ftp": 0.75, "target_cadence": 90 },
+    { "type": "steady", "label": "Step 1", "duration_sec": 60, "target_pct_ftp": 0.80, "target_cadence": 95 },
+    { "type": "steady", "label": "Step 2", "duration_sec": 60, "target_pct_ftp": 0.85, "target_cadence": 95 },
+    { "type": "steady", "label": "Step 3", "duration_sec": 60, "target_pct_ftp": 0.90, "target_cadence": 95 },
+    { "type": "steady", "label": "Step 4", "duration_sec": 60, "target_pct_ftp": 0.95, "target_cadence": 95 },
+    { "type": "steady", "label": "Step 5", "duration_sec": 60, "target_pct_ftp": 1.00, "target_cadence": 100 },
+    { "type": "steady", "label": "Step 6", "duration_sec": 60, "target_pct_ftp": 1.05, "target_cadence": 100 },
+    { "type": "steady", "label": "Step 7", "duration_sec": 60, "target_pct_ftp": 1.10, "target_cadence": 100 },
+    { "type": "steady", "label": "Step 8", "duration_sec": 60, "target_pct_ftp": 1.15, "target_cadence": 105 },
+    { "type": "steady", "label": "Step 9", "duration_sec": 60, "target_pct_ftp": 1.20, "target_cadence": 105 },
+    { "type": "steady", "label": "Step 10", "duration_sec": 60, "target_pct_ftp": 1.25, "target_cadence": 105 },
+    { "type": "steady", "label": "Step 11", "duration_sec": 60, "target_pct_ftp": 1.30, "target_cadence": 110 },
+    { "type": "steady", "label": "Step 12", "duration_sec": 60, "target_pct_ftp": 1.35, "target_cadence": 110 },
+    { "type": "steady", "label": "Step 13", "duration_sec": 60, "target_pct_ftp": 1.40, "target_cadence": 110 },
+    { "type": "steady", "label": "Step 14", "duration_sec": 60, "target_pct_ftp": 1.45, "target_cadence": 110 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 600, "start_pct_ftp": 0.60, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}

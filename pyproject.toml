@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cados"
+version = "0.1.0"
+description = "Focused indoor cycling desktop app for macOS and Windows."
+readme = "DOKUMENTATION.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.8",
+  "bleak>=0.22",
+  "SQLAlchemy>=2.0",
+  "psycopg[binary]>=3.2",
+]
+
+[project.scripts]
+cados = "cados.app:run"
+
+[tool.setuptools]
+packages = ["cados", "cados.core", "cados.models", "cados.services", "cados.ui"]

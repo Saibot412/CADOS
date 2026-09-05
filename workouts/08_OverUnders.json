@@ -1,0 +1,172 @@
+{
+  "name": "8_OverUnders",
+  "description": "3x9min",
+  "author": "ChatGPT",
+  "category": "Bergsprint",
+  "sort_order": 8,
+  "blocks": [
+    {
+      "type": "ramp",
+      "label": "Warmup",
+      "duration_sec": 480,
+      "start_pct_ftp": 0.45,
+      "end_pct_ftp": 0.65,
+      "target_cadence": 85
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Recovery",
+      "duration_sec": 360,
+      "target_pct_ftp": 0.5,
+      "target_cadence": 85
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Recovery",
+      "duration_sec": 360,
+      "target_pct_ftp": 0.5,
+      "target_cadence": 85
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Over",
+      "duration_sec": 120,
+      "target_pct_ftp": 1.08,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Under",
+      "duration_sec": 60,
+      "target_pct_ftp": 0.95,
+      "target_cadence": 90
+    },
+    {
+      "type": "steady",
+      "label": "Recovery",
+      "duration_sec": 360,
+      "target_pct_ftp": 0.5,
+      "target_cadence": 85
+    },
+    {
+      "type": "ramp",
+      "label": "Cooldown",
+      "duration_sec": 300,
+      "start_pct_ftp": 0.55,
+      "end_pct_ftp": 0.4,
+      "target_cadence": 85
+    }
+  ]
+}

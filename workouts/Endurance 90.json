@@ -1,0 +1,20 @@
+{
+  "name": "Endurance 90",
+  "description": "Lange Grundlageneinheit für stabile aerobe Entwicklung.",
+  "author": "CADOS",
+  "category": "Grundlage",
+  "sort_order": 20,
+  "best_for": "Lange Z2-Arbeit, Grundlage und ruhige Winterkilometer.",
+  "when_to_do": "Als Ersatz für eine ruhige Outdoor-Ausfahrt oder wenn du indoor einen langen, kontrollierten Ausdauerreiz setzen willst.",
+  "skip_if": "Wenn du schon viel Umfang draußen gesammelt hast und eher einen Qualitätsreiz brauchst.",
+  "blocks": [
+    { "type": "ramp", "label": "Warmup", "duration_sec": 720, "start_pct_ftp": 0.40, "end_pct_ftp": 0.65, "target_cadence": 85 },
+    { "type": "steady", "label": "Base 1", "duration_sec": 1200, "target_pct_ftp": 0.65, "target_cadence": 90 },
+    { "type": "steady", "label": "Cadence Reset", "duration_sec": 180, "target_pct_ftp": 0.65, "target_cadence": 75 },
+    { "type": "steady", "label": "Base 2", "duration_sec": 1200, "target_pct_ftp": 0.67, "target_cadence": 92 },
+    { "type": "steady", "label": "Cadence Reset", "duration_sec": 180, "target_pct_ftp": 0.65, "target_cadence": 75 },
+    { "type": "steady", "label": "Base 3", "duration_sec": 1200, "target_pct_ftp": 0.68, "target_cadence": 90 },
+    { "type": "steady", "label": "Finish Endurance", "duration_sec": 240, "target_pct_ftp": 0.70, "target_cadence": 88 },
+    { "type": "ramp", "label": "Cooldown", "duration_sec": 480, "start_pct_ftp": 0.65, "end_pct_ftp": 0.40, "target_cadence": 80 }
+  ]
+}
