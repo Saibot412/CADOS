@@ -28,3 +28,4 @@ htmlcov/
 .vscode/
 *.tmp
 *.sqlite3*
+/compose.override.yaml

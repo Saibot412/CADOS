@@ -39,6 +39,23 @@ bei einem Neustart nicht überschrieben.
 
 ## Domain und HTTPS
 
+Wenn Nginx Proxy Manager auf demselben Docker-Server läuft:
+
+```sh
+python3 scripts/connect_proxy.py
+```
+
+Der Helfer erkennt den Proxy-Container und dessen vorhandenes Docker-Netz, prüft
+die Compose-Konfiguration und verbindet CADOS über eine lokale, Git-ignorierte
+`compose.override.yaml` dauerhaft damit. Die eigene CADOS-Netzverbindung bleibt
+erhalten. Eigene Override-Dateien werden nicht überschrieben. Bei mehreren Proxys
+oder Netzen sind `--container NAME` und `--network NAME` möglich.
+In NPM als Ziel **http**, **cados-web**, **8000** eintragen. Keine Container-IP verwenden.
+Danach für `www.cados.saibot.at` ein Zertifikat anfordern und Force SSL aktivieren.
+Port 8000 bleibt auf dem Host nur an Loopback gebunden.
+
+Die Verbindung verwendet ein [externes Compose-Netz](https://docs.docker.com/compose/how-tos/networking/).
+
 In World4You muss **www.cados.saibot.at** auf die öffentliche Serveradresse zeigen.
 Der HTTPS-Reverse-Proxy leitet diese Domain auf `127.0.0.1:8000` weiter. Eine Vorlage
 für einen auf dem Host laufenden Caddy liegt in `server/Caddyfile.example`.
