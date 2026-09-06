@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 from cados.core.workout_loader import WorkoutLoader, WorkoutValidationError
 from cados.core.zwo_importer import parse_zwo
@@ -17,6 +18,10 @@ class WorkoutCatalog:
 
     def scan(self) -> list[WorkoutTemplate]:
         by_name = {workout.source_path.name.casefold(): workout for workout in self.loader.scan()}
+        with self.store.connection() as db:
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='hidden_workouts'").fetchone():
+                for row in db.execute("SELECT source_name FROM hidden_workouts"):
+                    by_name.pop(row[0].casefold(), None)
         for item in self.store.list_workouts():
             try:
                 workout = self.loader.load_payload(
@@ -36,6 +41,10 @@ class WorkoutCatalog:
         else:
             raise WorkoutValidationError("Unterstützt werden CADOS-JSON und Zwift-ZWO.")
         source_name = f"{path.stem}.json"
+        if any(item["source_name"].casefold() == source_name.casefold() and item["origin"] == "server"
+               for item in self.store.list_workouts()):
+            # Import creates a private copy; it must not silently edit a shared template.
+            source_name = f"{path.stem}_{uuid4().hex[:8]}.json"
         self.store.save_workout(workout.to_dict(), source_name, origin="import")
         return self.loader.load_payload(workout.to_dict(), Path("library") / source_name)
 

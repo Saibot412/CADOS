@@ -19,7 +19,7 @@ class ConfigTests(unittest.TestCase):
         with patch("cados.config.sys.platform", "darwin"), patch.dict(os.environ, {}, clear=True):
             self.assertTrue(str(user_data_directory()).endswith("Library/Application Support/Cados"))
         with patch("cados.config.sys.platform", "win32"), patch.dict(os.environ, {"LOCALAPPDATA": "C:/Local"}, clear=True):
-            self.assertEqual(str(user_data_directory()), "C:/Local/Cados")
+            self.assertEqual(user_data_directory(), Path("C:/Local") / "Cados")
 
     def test_environment_overrides_server_settings(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {

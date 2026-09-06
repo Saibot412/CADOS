@@ -23,7 +23,7 @@ class RemoteWorkout:
 
 
 class WorkoutLibraryClient:
-    MAX_RESPONSE_BYTES = 10_000_000
+    MAX_RESPONSE_BYTES = 100_000_000
 
     def __init__(self, base_url: str, token: str, timeout: float = 15.0):
         self.base_url = base_url.rstrip("/")
@@ -36,14 +36,21 @@ class WorkoutLibraryClient:
 
     def _validate_url(self) -> None:
         parsed = urlparse(self.base_url)
+        if parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.hostname:
+            raise WorkoutLibraryError("Bitte eine Server-Adresse ohne Zugangsdaten, Suchparameter oder Fragment eingeben.")
         if parsed.scheme == "https":
             return
         if parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
             return
         raise WorkoutLibraryError("Die Bibliothek benötigt HTTPS (außer bei localhost).")
 
+    def login(self, email: str, password: str) -> dict:
+        result = self._request("/api/v1/auth/login", method="POST", payload={"email": email, "password": password})
+        self.token = result["token"]
+        return result["user"]
+
     def _request(self, path: str, *, method: str = "GET", payload: dict | None = None) -> dict:
-        if not self.enabled:
+        if not self.enabled and path != "/api/v1/auth/login":
             raise WorkoutLibraryError("Die zentrale Workout-Bibliothek ist nicht eingerichtet.")
         self._validate_url()
         data = None if payload is None else json.dumps(payload, allow_nan=False).encode("utf-8")
@@ -63,7 +70,9 @@ class WorkoutLibraryClient:
                 raw = response.read(self.MAX_RESPONSE_BYTES + 1)
         except HTTPError as exc:
             if exc.code in {401, 403}:
-                raise WorkoutLibraryError("Zugriff verweigert: Bibliotheks-Token prüfen.") from exc
+                raise WorkoutLibraryError("Zugriff verweigert. Bitte mit deinem CADOS-Konto erneut anmelden.") from exc
+            if exc.code == 409:
+                raise WorkoutLibraryError("Daten wurden gleichzeitig geändert. Bitte erneut synchronisieren; lokale Änderungen bleiben erhalten.") from exc
             raise WorkoutLibraryError(f"Bibliotheksserver antwortet mit HTTP {exc.code}.") from exc
         except (URLError, TimeoutError, OSError) as exc:
             raise WorkoutLibraryError(f"Bibliotheksserver nicht erreichbar: {exc}") from exc
@@ -78,30 +87,20 @@ class WorkoutLibraryClient:
         return result
 
     def list_workouts(self) -> list[RemoteWorkout]:
-        result = self._request("/api/v1/workouts")
-        items = result.get("workouts")
+        result = self._request("/api/v1/sync")
+        items = result.get("records")
         if not isinstance(items, list):
             raise WorkoutLibraryError("In der Serverantwort fehlt die Workout-Liste.")
         workouts: list[RemoteWorkout] = []
         for item in items:
             if not isinstance(item, dict) or not isinstance(item.get("payload"), dict):
                 raise WorkoutLibraryError("Ein Server-Workout hat ein ungültiges Format.")
+            if item.get("kind") != "workout" or item.get("deleted"):
+                continue
             workouts.append(RemoteWorkout(
                 id=str(item.get("id") or ""),
-                source_name=str(item.get("source_name") or "workout.json"),
+                source_name=str(item["payload"].get("source_name") or str(item["id"]) + ".json"),
                 revision=max(1, int(item.get("revision") or 1)),
                 payload=item["payload"],
             ))
         return workouts
-
-    def publish(self, workout: WorkoutTemplate) -> RemoteWorkout:
-        result = self._request("/api/v1/workouts", method="POST", payload={
-            "source_name": workout.source_path.name,
-            "payload": workout.to_dict(),
-        })
-        return RemoteWorkout(
-            id=str(result["id"]),
-            source_name=str(result["source_name"]),
-            revision=int(result["revision"]),
-            payload=dict(result["payload"]),
-        )

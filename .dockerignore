@@ -1,0 +1,9 @@
+.git
+.venv
+data
+logs
+**/__pycache__
+**/.env
+**/.env.*
+tests
+Cados.app

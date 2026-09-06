@@ -28,7 +28,7 @@ class WorkoutLibraryClientTests(unittest.TestCase):
 
     def test_reads_workouts_and_sends_bearer_token(self):
         payload = {"name": "Remote", "blocks": [{"type": "steady", "duration_sec": 60, "target_watts": 100}]}
-        response = Response({"workouts": [{"id": "1", "source_name": "remote.json", "revision": 2, "payload": payload}]})
+        response = Response({"records": [{"id": "1", "kind": "workout", "revision": 2, "payload": payload}]})
         with patch("cados.services.workout_library.urlopen", return_value=response) as request:
             items = WorkoutLibraryClient("https://example.com", "top-secret").list_workouts()
         self.assertEqual(items[0].payload, payload)

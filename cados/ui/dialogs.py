@@ -100,53 +100,32 @@ class ProfileDialog(QDialog):
         )
 
 
-class WorkoutLibraryDialog(QDialog):
-    def __init__(self, url: str, token: str, parent=None):
+class AccountLoginDialog(QDialog):
+    def __init__(self, url, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Zentrale Workout-Bibliothek")
-        self.setModal(True)
-        self.setMinimumWidth(520)
-
+        self.setWindowTitle("Bei CADOS anmelden")
+        self.setMinimumWidth(430)
         layout = QVBoxLayout(self)
-        explanation = QLabel(
-            "Die App lädt Workouts von diesem Server und veröffentlicht neue "
-            "Importe dort. Persönliche Profile und gefahrene Sessions bleiben lokal."
-        )
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-
+        info = QLabel("Melde dich mit deinem Web-Konto an. Vorhandene lokale Profile und Trainings werden diesem Konto zugeordnet.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
         form = QFormLayout()
-        self.url_edit = QLineEdit(url)
-        self.url_edit.setPlaceholderText("https://cados.example.com")
-        self.token_edit = QLineEdit(token)
-        self.token_edit.setEchoMode(QLineEdit.Password)
-        self.token_edit.setPlaceholderText("Zugriffstoken")
-        form.addRow("Server-URL", self.url_edit)
-        form.addRow("Token", self.token_edit)
+        self.url = QLineEdit(url or "https://www.cados.saibot.at")
+        self.email = QLineEdit()
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        form.addRow("Server", self.url)
+        form.addRow("E-Mail", self.email)
+        form.addRow("Passwort", self.password)
         layout.addLayout(form)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self._validate)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Anmelden")
+        buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def _validate(self) -> None:
-        url = self.url_edit.text().strip()
-        token = self.token_edit.text().strip()
-        if bool(url) != bool(token):
-            QMessageBox.warning(self, "Unvollständig", "Bitte Server-URL und Token gemeinsam eintragen.")
-            return
-        if url and not (
-            url.startswith("https://")
-            or url.startswith("http://localhost")
-            or url.startswith("http://127.0.0.1")
-        ):
-            QMessageBox.warning(self, "Unsichere URL", "Für entfernte Server ist HTTPS erforderlich.")
-            return
-        self.accept()
-
-    def values(self) -> tuple[str, str]:
-        return self.url_edit.text().strip().rstrip("/"), self.token_edit.text().strip()
+    def values(self):
+        return self.url.text().strip().rstrip("/"), self.email.text().strip(), self.password.text()
 
 
 class FTPResultDialog(QDialog):

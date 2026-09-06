@@ -224,7 +224,7 @@ Die Einstellungsdatei im lokalen CADOS-Datenordner enthält:
 | `default_ftp` | Standard-FTP für neue Profile | 250 |
 | `theme_mode` | Farbschema (nur "light") | light |
 | `workout_library_url` | HTTPS-Adresse der zentralen Bibliothek | leer |
-| `workout_library_token` | Gemeinsames Zugriffstoken | leer |
+| `workout_library_token` | Persönliches Anmeldetoken; wird beim Login gesetzt | leer |
 
 ## Trainer-Verbindung
 
@@ -265,20 +265,30 @@ Alte Sessions bleiben lesbar; damals nicht gespeicherte Messdaten können nicht
 nachträglich rekonstruiert werden. Beschädigte Altdaten werden nicht überschrieben
 und die Migration wird in diesem Fall nicht als abgeschlossen markiert.
 
-## Zentrale Workout-Bibliothek
+## Web-App und zentrale Synchronisation
 
-Die Schaltfläche **Server** speichert URL und Zugriffstoken. **Online laden** holt
-den Katalog; bei konfiguriertem Server geschieht dies zusätzlich beim App-Start.
-Ein über **Importieren** hinzugefügtes Workout wird lokal gespeichert und danach im
-Hintergrund auf dem Server veröffentlicht. Scheitert der Upload, bleibt die lokale
-Kopie erhalten. Profile und gefahrene Trainings werden dabei nicht hochgeladen.
+Unter `https://www.cados.saibot.at` ist die Web-App vorgesehen. Dort können Benutzer
+Workouts ansehen, importieren, bearbeiten, kopieren und löschen sowie Profile,
+FTP und Trainingshistorie verwalten. Administratoren legen weitere Benutzer an.
+Gemeinsame Workouts stehen allen Konten zur Verfügung; Profile und Historien sind privat.
 
-Der Server in `server/` verwendet die bereits vorhandene PostgreSQL-Datenbank und
-stellt eine kleine, token-geschützte API bereit. Hinweise zu Docker, HTTPS und den
-Umgebungsvariablen stehen in `server/README.md`. Ohne eingerichteten Server bleibt
-die App vollständig offline benutzbar.
+Über **Anmelden** verwendet die Desktop-App dasselbe Konto. Profile, abgeschlossene
+Trainings und Workouts werden beim Start und jede Minute im Leerlauf synchronisiert.
+**Synchronisieren** startet den Abgleich manuell. Während eines Trainings erfolgt
+kein Abgleich. Die SQLite-Datenbank ermöglicht Training ohne Netzwerkverbindung.
+Beim ersten Login werden die vorhandenen lokalen Daten diesem Konto zugeordnet.
+
+Bei widersprüchlichen Änderungen wird die Serverfassung übernommen; die lokale
+Fassung bleibt gesichert und kann über **Konto** exportiert werden. Dort sind auch
+Abmeldung und eine lokale Datensicherung verfügbar. Bluetooth-Einstellungen bleiben
+gerätespezifisch. Einzelheiten und Installationsschritte stehen in [server/README.md](server/README.md).
 
 ## Entwicklung und Tests
+
+Unter Windows kann `Start-CADOS.cmd` nach Installation von Python 3.11 oder neuer
+mit Python Launcher per Doppelklick verwendet werden. Der Starter richtet eine
+Benutzerumgebung unter `%LOCALAPPDATA%\Cados` ein. Der Projektordner muss bestehen
+bleiben; dies ist ein Starter aus dem Quellcode, noch kein signierter Installer.
 
 Aus dem Projektordner mit installierten Abhängigkeiten:
 

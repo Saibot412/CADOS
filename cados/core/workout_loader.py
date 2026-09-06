@@ -29,7 +29,11 @@ class WorkoutLoader:
         return workouts
 
     def load_path(self, path: Path) -> WorkoutTemplate:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as source:
+            raw = source.read(2_000_001)
+        if len(raw) > 2_000_000:
+            raise WorkoutValidationError("Workout-Dateien dürfen höchstens 2 MB groß sein.")
+        payload = json.loads(raw.decode("utf-8-sig"))
         if not isinstance(payload, dict):
             raise WorkoutValidationError("Workout root must be an object.")
         return self.load_payload(payload, source_path=path)

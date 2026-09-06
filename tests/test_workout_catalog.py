@@ -74,3 +74,12 @@ class WorkoutCatalogTests(unittest.TestCase):
         workouts = self.catalog.scan()
         self.assertEqual(len(workouts), 1)
         self.assertEqual(workouts[0].name, "Server Version")
+
+    def test_import_does_not_modify_an_existing_shared_workout(self):
+        payload={"name":"Shared","blocks":[{"type":"steady","duration_sec":60,"target_watts":100}]}
+        self.catalog.save_remote(RemoteWorkout("remote-1","same.json",1,payload))
+        source=self.root/"same.json"
+        source.write_text(json.dumps({**payload,"name":"Private import"}))
+        imported=self.catalog.import_file(source)
+        self.assertNotEqual(imported.source_path.name,"same.json")
+        self.assertEqual({w.name for w in self.catalog.scan()},{"Shared","Private import"})

@@ -53,10 +53,11 @@ def _cadence(element: ET.Element, *keys: str) -> int | None:
 
 
 def parse_zwo(path: Path, loader: WorkoutLoader) -> WorkoutTemplate:
-    raw = path.read_bytes()
+    with path.open("rb") as source:
+        raw = source.read(2_000_001)
     if len(raw) > 2_000_000:
         raise ZwoImportError("Die ZWO-Datei ist größer als 2 MB.")
-    upper = raw.upper()
+    upper = raw.replace(b"\x00", b"").upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise ZwoImportError("ZWO-Dateien mit DTD oder Entities werden nicht unterstützt.")
     try:

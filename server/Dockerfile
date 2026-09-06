@@ -5,4 +5,9 @@ WORKDIR /app
 COPY server/requirements.txt /app/server/requirements.txt
 RUN pip install --no-cache-dir -r /app/server/requirements.txt
 COPY server /app/server
-CMD ["uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+COPY cados/core /app/cados/core
+COPY cados/models /app/cados/models
+COPY cados/assets /app/cados/assets
+RUN useradd --uid 10001 --create-home cados
+USER cados
+CMD ["uvicorn", "server.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

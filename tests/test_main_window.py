@@ -17,6 +17,7 @@ except ImportError:
 from cados.config import AppConfig
 from cados.services.storage import DataStore
 from cados.services.workout_catalog import WorkoutCatalog
+from cados.models.session import WorkoutSessionRecord
 from fakes import FakeHRMonitor, FakeTrainer
 
 
@@ -55,6 +56,19 @@ class MainWindowTests(unittest.TestCase):
         self.assertEqual(sessions[0].metrics["avg_watts"], 200)
         self.assertEqual(sessions[0].samples[0]["heart_rate"], 140)
         self.assertLess(self.trainer.commands.index(("stop",)), self.trainer.commands.index(("close",)))
+
+    def test_sync_does_not_start_during_training(self):
+        with patch("cados.ui.main_window.threading.Thread") as thread:
+            self.window._start_library_worker("auto")
+            thread.assert_not_called()
+        self.assertFalse(self.window._library_request_in_progress)
+
+    def test_deleted_template_can_be_repeated_from_history_payload(self):
+        session=WorkoutSessionRecord(user_id="test",user_name="Test",workout_name="Archived",
+            duration_sec=60,status="completed",trainer_source="test",workout_file_name="removed.json",
+            workout_payload={"name":"Archived","blocks":[{"type":"steady","duration_sec":60,"target_watts":150}]})
+        restored=self.window._workout_from_session(session)
+        self.assertEqual(restored.name,"Archived")
 
     def test_close_failure_retains_session_and_a_second_close_retries(self):
         event = QCloseEvent()

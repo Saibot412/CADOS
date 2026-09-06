@@ -1,30 +1,125 @@
-# CADOS Workout-Bibliothek
+# CADOS Web und Synchronisation
 
-Die Server-Anwendung speichert ausschließlich Workout-Vorlagen in PostgreSQL.
-Profile, gefahrene Sessions und Messwerte verbleiben in der lokalen SQLite-Datei.
+Weboberfläche und API laufen gemeinsam in einem Container. Die vorhandene PostgreSQL-
+Instanz bleibt bestehen. Es werden nur neue Tabellen mit dem Präfix `cados_` angelegt;
+die bisherige Workout-Tabelle und fremde Tabellen werden nicht verändert.
 
-## Betrieb
+## Installation auf dem Server
 
-Benötigt werden eine vorhandene PostgreSQL-Datenbank und ein HTTPS-Reverse-Proxy.
-Die Tabelle `cados_workout_library` wird beim Start automatisch angelegt.
+Voraussetzung: Docker mit Compose sowie ein HTTPS-Reverse-Proxy auf diesem Server.
+Im CADOS-Projektordner:
 
-```bash
-docker build -f server/Dockerfile -t cados-library .
-docker run --rm -p 127.0.0.1:8000:8000 \
-  --env-file server/.env cados-library
+```sh
+cp server/.env.example server/.env
+chmod 600 server/.env
 ```
 
-Der Reverse-Proxy veröffentlicht Port 8000 anschließend unter einer HTTPS-Adresse.
-In CADOS werden diese Adresse und derselbe `CADOS_LIBRARY_TOKEN` über die
-Schaltfläche **Server** eingetragen. Verwende ein zufälliges Token mit mindestens
-24 Zeichen. Port 8000 und PostgreSQL sollten nicht direkt ins Internet gestellt
-werden.
+In `server/.env` einmalig konfigurieren:
 
-Die API stellt folgende Endpunkte bereit:
+* `DATABASE_URL`: vorhandene PostgreSQL-Verbindung, aus dem Container erreichbar.
+  Beispiel: `postgresql+psycopg://cados:URL_ENCODED_PASSWORD@DB_HOST:5432/cados`.
+  `localhost` bezeichnet im Container den Container selbst. Sonderzeichen in Benutzer
+  und Passwort müssen URL-kodiert sein. Bei einer entfernten Datenbank SSL nach Vorgabe
+  des Datenbankbetreibers konfigurieren, z. B. `?sslmode=verify-full` mit passendem CA-Zertifikat.
+* `CADOS_PUBLIC_URL=https://www.cados.saibot.at`
+* `CADOS_ADMIN_EMAIL`: dein erstes Benutzerkonto.
+* `CADOS_ADMIN_PASSWORD`: einzigartiges Passwort mit mindestens 12 Zeichen.
 
-- `GET /health` für die Betriebsprüfung
-- `GET /api/v1/workouts` für den Katalog
-- `POST /api/v1/workouts` zum Anlegen oder Aktualisieren
-- `DELETE /api/v1/workouts/{id}` zum Entfernen
+```sh
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=80 cados
+curl --fail http://127.0.0.1:8000/health
+```
 
-Alle Workout-Endpunkte benötigen `Authorization: Bearer <token>`.
+Der Erststart legt das Administratorkonto und die 26 mitgelieferten Workouts an.
+Danach `CADOS_ADMIN_PASSWORD` aus `.env` entfernen und den Container mit
+`docker compose up -d --force-recreate` neu erstellen. Bestehende Passwörter werden
+bei einem Neustart nicht überschrieben.
+
+## Domain und HTTPS
+
+In World4You muss **www.cados.saibot.at** auf die öffentliche Serveradresse zeigen.
+Der HTTPS-Reverse-Proxy leitet diese Domain auf `127.0.0.1:8000` weiter. Eine Vorlage
+für einen auf dem Host laufenden Caddy liegt in `server/Caddyfile.example`.
+DNS allein richtet weder Docker noch das TLS-Zertifikat ein.
+Bei einem Reverse-Proxy in Docker stattdessen ein gemeinsames privates Docker-Netz
+verwenden und auf `cados:8000` zeigen; Port 8000 nicht öffentlich freigeben.
+
+## Benutzung
+
+Im Browser anmelden, über **Benutzer** das Konto des Freundes anlegen und Zugangsdaten
+persönlich weitergeben. Jeder Benutzer hat private Profile, Trainings und Workouts.
+Administratoren können beim Import oder Kopieren **Für alle freigeben** wählen.
+Geteilte Workouts dürfen Mitglieder ansehen und privat kopieren, aber nicht ändern.
+Die Freigabe bestehender Datensätze wird nicht nachträglich geändert: dafür eine
+Kopie erstellen und gegebenenfalls das Original löschen.
+
+JSON und ZWO werden über die Oberfläche importiert. Name, Beschreibung, Kategorie,
+Sortierung, Dauer und vorhandene Leistungs-/Kadenzziele lassen sich bearbeiten.
+Ein vollständiger Editor zum freien Zusammenstellen neuer Blöcke ist noch nicht enthalten.
+
+In der Desktop-App **Anmelden** wählen und dieselben Zugangsdaten verwenden.
+Beim ersten Login werden vorhandene lokale Profile und Trainings dem Konto zugeordnet.
+Die lokale Datenbank bleibt an dieses Konto und diese Serveradresse gebunden. Andere
+Konten auf demselben Computer benötigen einen separaten `CADOS_DATA_DIR`.
+
+## Synchronisationsregeln
+
+* Beim Start, manuell und jede Minute im Leerlauf; während eines Trainings ausgesetzt.
+* Profile, abgeschlossene Trainings mit Messwerten und importierte Workouts werden
+  in beide Richtungen synchronisiert. Web-Einstellungen werden lokal übernommen.
+* Gerätedaten wie Bluetooth-Kennungen bleiben lokal.
+* Änderungen tragen Revisionen. Veraltete Schreibversuche ergeben HTTP 409.
+* Ändern Web und Desktop denselben Datensatz offline, gewinnt bei der anschließenden
+  Synchronisation die Serverfassung. Die lokale Fassung bleibt in `sync_conflicts`
+  gesichert und kann unter **Konto** exportiert werden.
+* Löschungen bleiben als Markierungen gespeichert, damit Offline-Geräte sie übernehmen.
+* Die erste Version lädt einen vollständigen Kontostand. Sehr große Historien benötigen
+  künftig paginierte Übertragung; der Desktop begrenzt Antworten auf 100 MB.
+* Laufende, noch nicht abgeschlossene Trainings werden nicht fortlaufend zum Server
+  gesichert. Ein erzwungenes Prozessende kann die laufende Session verlieren.
+
+## Betrieb und Wiederherstellung
+
+Passwörter liegen als gesalzene scrypt-Hashes vor. Anmeldetokens sind zufällig, gelten
+30 Tage und werden auf dem Server nur gehasht gespeichert. Browser verwenden HttpOnly-
+Cookies, SameSite und CSRF-Prüfung. Passwortänderung widerruft alle Anmeldungen des Kontos.
+Der Desktop speichert sein Token in den lokalen Benutzereinstellungen (unter macOS mit
+Dateimodus 0600); das Passwort wird nicht gespeichert.
+Abmelden entfernt die Anmeldung; bereits heruntergeladene Daten bleiben lokal verfügbar.
+
+Die Anmelderate wird pro Prozess begrenzt. Deshalb zunächst genau einen API-Worker
+betreiben; für mehrere Instanzen ist ein gemeinsamer Rate-Limiter erforderlich.
+Da der Container Proxy-Header nicht vertraut, teilen Zugriffe hinter einem Reverse-Proxy
+derzeit das IP-Limit (20 Versuche in 15 Minuten); zusätzlich besteht ein E-Mail-Limit.
+
+Regelmäßige PostgreSQL-Backups mit `pg_dump` und Wiederherstellung mit `pg_restore`
+über die vorhandene Serveradministration einrichten. Vor jedem Update ein Backup anlegen.
+Lokale SQLite-Sicherungen sind über **Konto → Lokale Daten sichern** möglich.
+Ein Backup einer laufenden SQLite-Datenbank erfolgt über die Backup-API, nicht durch
+einfaches Kopieren der Hauptdatei ohne WAL.
+
+Schemaänderungen stehen in `server/app/database.py`. Version 1 ist additiv und durch
+eine PostgreSQL-Transaktionssperre gegen parallele Migrationen geschützt. Künftige
+Änderungen müssen als neue versionierte Migrationen ergänzt werden.
+
+## Tests
+
+```sh
+python -m pip install -e . -r server/requirements.txt httpx
+python -m unittest discover -s tests -v
+```
+
+API-Integrationstests verwenden temporäres SQLite mit derselben SQLAlchemy-Schemadefinition.
+In GitHub Actions laufen dieselben API-Tests außerdem gegen PostgreSQL 17 in jeweils
+isolierten Testschemas; Desktop-Tests laufen auf Windows und macOS. Die Workflow-Datei
+liegt in `.github/workflows/test.yml`. Der Workflow prüft auch den Docker-Build.
+Containerstart und Reverse-Proxy müssen zusätzlich auf dem Zielserver geprüft werden.
+Der optional ausführbare Browser-Test verwendet ausschließlich Testdaten:
+
+```sh
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/smoke_web.py
+```

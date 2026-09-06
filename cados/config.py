@@ -110,6 +110,8 @@ class AppConfig:
         settings.pop("database_url", None)
         temporary = self.paths.settings_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+        if os.name != "nt":
+            temporary.chmod(0o600)
         temporary.replace(self.paths.settings_path)
 
     def save_theme_mode(self, theme_mode: str) -> None:
