@@ -8,6 +8,7 @@ COPY server /app/server
 COPY cados/core /app/cados/core
 COPY cados/models /app/cados/models
 COPY cados/assets /app/cados/assets
+RUN python -c "from server.app.main import create_app"
 RUN useradd --uid 10001 --create-home cados
 USER cados
 CMD ["uvicorn", "server.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
