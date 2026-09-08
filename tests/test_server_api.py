@@ -57,6 +57,16 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/v1/auth/logout").status_code,200)
         self.assertEqual(self.client.get("/api/v1/sync").status_code,401)
 
+    def test_anyone_can_register_with_matching_passwords(self):
+        payload = {"email": "new@example.test", "password": "new-password-123",
+                   "password_confirmation": "new-password-123"}
+        self.assertEqual(self.client.post("/api/v1/auth/register", json=payload).status_code, 200)
+        self.assertEqual(self.client.post("/api/v1/auth/login", json={
+            "email": payload["email"], "password": payload["password"]}).status_code, 200)
+        self.assertEqual(self.client.post("/api/v1/auth/register", json={
+            **payload, "password_confirmation": "different-password-456"}).status_code, 422)
+        self.assertEqual(self.client.post("/api/v1/auth/register", json=payload).status_code, 409)
+
     def test_profiles_are_private_and_stale_revisions_rejected(self):
         record=self.change()
         self.assertEqual(self.save(record).status_code,200)

@@ -10,6 +10,8 @@ async function api(path, options={}){
 }
 const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data)});
 function showLogin(){user=null;$('#login').hidden=false;$('#dashboard').hidden=true;$('#account').hidden=true;}
+function showRegister(){ $('#login-form').hidden=true;$('#register-form').hidden=false;}
+function showLoginForm(){ $('#register-form').hidden=true;$('#login-form').hidden=false;}
 function showDashboard(){ $('#login').hidden=true;$('#dashboard').hidden=false;$('#account').hidden=false;$('#email').textContent=user.email;$('#users-tab').hidden=!user.admin;$('#share-label').hidden=!user.admin;}
 function node(tag,text,className){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;}
 function button(text,callback){const b=node('button',text,'quiet');b.type='button';b.onclick=()=>Promise.resolve().then(callback).catch(e=>notice(e.message,true));return b;}
@@ -39,6 +41,8 @@ function edit(r){editing=structuredClone(r);const fields=$('#edit-fields');field
 $('#edit-form').onsubmit=async e=>{e.preventDefault();try{const data=new FormData(e.target),p=editing.payload;p.name=data.get('name');if(editing.kind==='profile'){for(const k of ['ftp','weight_kg','max_hr'])p[k]=data.get(k)===''?null:Number(data.get(k));p.updated_at=new Date().toISOString();}else{p.description=data.get('description');p.category=data.get('category');p.sort_order=Number(data.get('sort_order'));p.blocks.forEach((b,i)=>{b.duration_sec=Number(data.get('duration_'+i));for(const key of Object.keys(b))if(data.has('block_'+i+'_'+key))b[key]=Number(data.get('block_'+i+'_'+key));});}await save(editing);$('#editor').close();}catch(e){notice(e.message,true);$('#editor').close();}};
 $('#close-editor').onclick=()=>$('#editor').close();
 $('#login-form').onsubmit=async e=>{e.preventDefault();const submit=e.target.querySelector('button');submit.disabled=true;try{user=(await post('/auth/login',Object.fromEntries(new FormData(e.target)))).user;e.target.reset();showDashboard();await reload();$('#notice').hidden=true;}catch(e){notice(e.message,true);}finally{submit.disabled=false;}};
+$('#show-register').onclick=showRegister;$('#show-login').onclick=showLoginForm;
+$('#register-form').onsubmit=async e=>{e.preventDefault();const submit=e.target.querySelector('button');const data=Object.fromEntries(new FormData(e.target));if(data.password!==data.password_confirmation){notice('Die Passwörter stimmen nicht überein.',true);return;}submit.disabled=true;try{await post('/auth/register',data);e.target.reset();showLoginForm();notice('Konto erstellt. Du kannst dich jetzt anmelden.');}catch(e){notice(e.message,true);}finally{submit.disabled=false;}};
 $('#logout').onclick=async()=>{try{await post('/auth/logout',{});showLogin();records=[];}catch(e){notice(e.message,true);}};
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(n=>n.className='quiet');b.className='';for(const key of Object.keys(titles))$('#'+key+'-panel').hidden=key!==b.dataset.tab;$('#page-title').textContent=titles[b.dataset.tab];});
 $('#refresh').onclick=()=>reload().then(()=>notice('Daten aktualisiert.')).catch(e=>notice(e.message,true));$('#search').oninput=render;

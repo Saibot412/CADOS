@@ -30,6 +30,9 @@ class Credentials(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=256)
 
+class Registration(Credentials):
+    password_confirmation: str = Field(max_length=256)
+
 class Change(BaseModel):
     id: str
     kind: str
@@ -110,6 +113,27 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     def public_user(user):
         return {key: user[key] for key in ("id", "email", "admin")}
 
+    def create_user(credentials: Credentials):
+        email = credentials.email.strip().casefold()
+        if "@" not in email:
+            raise HTTPException(422, "Ungültige E-Mail-Adresse")
+        try:
+            encoded = hash_password(credentials.password)
+            with engine.begin() as connection:
+                connection.execute(users.insert().values(
+                    id=str(uuid4()), email=email, password=encoded, admin=False))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except IntegrityError as exc:
+            raise HTTPException(409, "Für diese E-Mail-Adresse gibt es bereits ein Konto.") from exc
+
+    @app.post("/api/v1/auth/register")
+    def register(registration: Registration):
+        if registration.password != registration.password_confirmation:
+            raise HTTPException(422, "Die Passwörter stimmen nicht überein.")
+        create_user(registration)
+        return {"ok": True}
+
     @app.post("/api/v1/auth/login")
     def login(credentials: Credentials, request: Request, response: Response):
         email = credentials.email.strip().casefold()
@@ -164,17 +188,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     def add_user(credentials: Credentials, user=Depends(current_user)):
         if not user["admin"]:
             raise HTTPException(403, "Nur Administratoren dürfen Benutzer anlegen.")
-        email = credentials.email.strip().casefold()
-        if "@" not in email:
-            raise HTTPException(422, "Ungültige E-Mail-Adresse")
-        try:
-            encoded = hash_password(credentials.password)
-            with engine.begin() as connection:
-                connection.execute(users.insert().values(id=str(uuid4()), email=email, password=encoded, admin=False))
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        except IntegrityError as exc:
-            raise HTTPException(409, "Benutzer existiert bereits.") from exc
+        create_user(credentials)
         return {"ok": True}
 
     def visible(user):
