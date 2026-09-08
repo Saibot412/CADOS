@@ -25,7 +25,7 @@ from cados.core.hr_zones import HR_ZONES
 from cados.core.zones import POWER_ZONES
 from cados.ui.widgets import WorkoutTimelineWidget
 
-from cados.ui.library_widgets import _NoScrollComboBox, _WorkoutListDelegate
+from cados.ui.library_widgets import _WorkoutListDelegate
 
 
 class MainWindowView(QMainWindow):
@@ -62,34 +62,30 @@ class MainWindowView(QMainWindow):
         header_layout.setContentsMargins(12, 8, 12, 8)
         header_layout.setSpacing(8)
 
-        self.brand_logo_label = QLabel("Cados")
+        self.brand_logo_label = QLabel("CADOS")
         self.brand_logo_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.brand_logo_label.setProperty("sectionTitle", True)
+        self.brand_logo_label.setProperty("brand", True)
+        brand_block = QVBoxLayout()
+        brand_block.setContentsMargins(4, 0, 12, 0)
+        brand_block.setSpacing(0)
+        brand_block.addWidget(self.brand_logo_label)
+        brand_caption = QLabel("INDOOR CYCLING")
+        brand_caption.setProperty("brandCaption", True)
+        brand_block.addWidget(brand_caption)
 
-        self.profile_combo = _NoScrollComboBox()
-        self.profile_combo.setFixedWidth(200)
-        self.profile_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.new_profile_button = QPushButton("Neuer Benutzer")
-        self.new_profile_button.setProperty("soft", True)
-        self.edit_profile_button = QPushButton("Bearbeiten")
+        self.page_label = QLabel("MEINE WORKOUTS")
+        self.page_label.setProperty("pageLabel", True)
+
+        self.profile_summary_label = QLabel("Profil wird geladen …")
+        self.profile_summary_label.setProperty("profileSummary", True)
+        self.edit_profile_button = QPushButton("Mein Profil")
         self.edit_profile_button.setProperty("soft", True)
-
-        for control in (
-            self.profile_combo,
-            self.new_profile_button,
-            self.edit_profile_button,
-        ):
-            control.setProperty("compact", True)
-
-        profile_label = QLabel("Benutzer")
-        profile_label.setProperty("eyebrow", True)
+        self.edit_profile_button.setProperty("compact", True)
 
         profile_row = QHBoxLayout()
         profile_row.setContentsMargins(0, 0, 0, 0)
-        profile_row.setSpacing(8)
-        profile_row.addWidget(profile_label)
-        profile_row.addWidget(self.profile_combo)
-        profile_row.addWidget(self.new_profile_button)
+        profile_row.setSpacing(6)
+        profile_row.addWidget(self.profile_summary_label)
         profile_row.addWidget(self.edit_profile_button)
 
         profile_container = QWidget()
@@ -163,9 +159,10 @@ class MainWindowView(QMainWindow):
         hr_status_layout.addWidget(self.hr_status_value_label, 1)
 
 
-        header_layout.addWidget(self.brand_logo_label, 0, Qt.AlignLeft)
-        header_layout.addWidget(self.profile_container, 1)
-        header_layout.addWidget(self.training_user_label, 1)
+        header_layout.addLayout(brand_block)
+        header_layout.addWidget(self.page_label, 0, Qt.AlignLeft)
+        header_layout.addWidget(self.profile_container, 0)
+        header_layout.addWidget(self.training_user_label, 0)
         header_layout.addStretch(1)
         header_layout.addWidget(self.training_state_pill, 0, Qt.AlignRight)
         header_layout.addWidget(self.hr_status_pill, 0, Qt.AlignRight)
@@ -222,7 +219,7 @@ class MainWindowView(QMainWindow):
         self.import_workout_button.setProperty("soft", True)
         self.sync_workouts_button = QPushButton("Synchronisieren")
         self.sync_workouts_button.setProperty("soft", True)
-        self.library_settings_button = QPushButton("Anmelden")
+        self.library_settings_button = QPushButton("Konto")
         self.library_settings_button.setProperty("soft", True)
         library_actions.addWidget(self.import_workout_button)
         library_actions.addWidget(self.sync_workouts_button)

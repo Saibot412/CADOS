@@ -237,8 +237,6 @@ class MainWindow(MainWindowView):
         self.plus_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.adjust_target(5)))
         self.minus_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.adjust_target(-5)))
         self.training_exit_button.clicked.connect(self._exit_training)
-        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        self.new_profile_button.clicked.connect(self._create_profile)
         self.edit_profile_button.clicked.connect(self._edit_profile)
         self.repeat_session_button.clicked.connect(self._repeat_selected_session)
         self.session_table.itemDoubleClicked.connect(lambda _: self._repeat_selected_session())
@@ -246,29 +244,26 @@ class MainWindow(MainWindowView):
     def _reload_profiles(self) -> None:
         selected_id = self.current_profile.id if self.current_profile else None
         self.profiles = self.store.list_profiles()
-        self.profile_combo.blockSignals(True)
-        self.profile_combo.clear()
-        for profile in self.profiles:
-            self.profile_combo.addItem(f"{profile.name} ({profile.ftp_watts} W FTP)", profile.id)
-        self.profile_combo.blockSignals(False)
 
         if not self.profiles:
             self.current_profile = None
+            self.profile_summary_label.setText("Profil wird synchronisiert …")
+            self.edit_profile_button.setText("Profil einrichten")
             return
 
-        index = 0
-        if selected_id:
-            for row, profile in enumerate(self.profiles):
-                if profile.id == selected_id:
-                    index = row
-                    break
-        self.profile_combo.setCurrentIndex(index)
-        self._on_profile_changed()
+        self.current_profile = next(
+            (profile for profile in self.profiles if profile.id == selected_id),
+            self.profiles[0],
+        )
+        self._apply_current_profile()
 
-    def _on_profile_changed(self) -> None:
-        profile_id = self.profile_combo.currentData()
-        self.current_profile = next((profile for profile in self.profiles if profile.id == profile_id), None)
+    def _apply_current_profile(self) -> None:
         self.engine.set_profile(self.current_profile)
+        if self.current_profile is not None:
+            self.profile_summary_label.setText(
+                f"{self.current_profile.name}  ·  {self.current_profile.ftp_watts} W FTP"
+            )
+            self.edit_profile_button.setText("Mein Profil")
         self._reload_sessions()
         if self.current_workout_template is not None:
             self._display_workout_preview(self.current_workout_template)
@@ -282,6 +277,7 @@ class MainWindow(MainWindowView):
 
     def _edit_profile(self) -> None:
         if self.current_profile is None:
+            self._create_profile()
             return
         dialog = ProfileDialog(self.current_profile, self)
         if dialog.exec():
@@ -392,7 +388,7 @@ class MainWindow(MainWindowView):
             return
         self._library_request_in_progress = True
         self.sync_workouts_button.setEnabled(False)
-        for widget in (self.start_workout_button, self.new_profile_button, self.edit_profile_button,
+        for widget in (self.start_workout_button, self.edit_profile_button,
                        self.import_workout_button, self.library_settings_button, self.repeat_session_button):
             widget.setEnabled(False)
         threading.Thread(
@@ -431,7 +427,7 @@ class MainWindow(MainWindowView):
     def _handle_library_finished(self, result: dict[str, object]) -> None:
         self._library_request_in_progress = False
         self.sync_workouts_button.setEnabled(True)
-        for widget in (self.start_workout_button, self.new_profile_button, self.edit_profile_button,
+        for widget in (self.start_workout_button, self.edit_profile_button,
                        self.import_workout_button, self.library_settings_button, self.repeat_session_button):
             widget.setEnabled(True)
         if result.get("ok"):
@@ -439,7 +435,7 @@ class MainWindow(MainWindowView):
                 self.workout_library.token = ""
                 self.config.workout_library_token = ""
                 self.config.save_settings({"workout_library_token": ""})
-                self.library_settings_button.setText("Anmelden")
+                self.library_settings_button.setText("Konto")
                 self.statusBar().showMessage("Abgemeldet · lokale Daten bleiben für Offline-Training erhalten", 8000)
                 return
             if result.get("client"):

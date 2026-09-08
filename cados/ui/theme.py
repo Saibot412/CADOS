@@ -160,6 +160,32 @@ QLabel[sectionTitle="true"] {
     font-weight: 700;
     color: #18283d;
 }
+QLabel[brand="true"] {
+    color: #102a43;
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+}
+QLabel[brandCaption="true"] {
+    color: #6d8195;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+QLabel[pageLabel="true"] {
+    color: #5e7389;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    padding-left: 12px;
+    border-left: 1px solid #dce3ea;
+}
+QLabel[profileSummary="true"] {
+    color: #38536d;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 4px 6px 10px;
+}
 QLabel[heroText="true"] {
     color: #18283d;
 }
