@@ -36,6 +36,9 @@ class Registration(Credentials):
     ftp: int = Field(ge=30, le=2000)
     weight_kg: float = Field(ge=10, le=500)
 
+class UserStatus(BaseModel):
+    active: bool
+
 class Change(BaseModel):
     id: str
     kind: str
@@ -108,13 +111,13 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         token = header[7:] if header.startswith("Bearer ") else request.cookies.get("cados_session", "")
         with engine.connect() as connection:
             row = connection.execute(sa.select(users).join(tokens, tokens.c.user_id == users.c.id).where(
-                tokens.c.hash == token_hash(token), tokens.c.expires > time.time())).mappings().first()
+                tokens.c.hash == token_hash(token), tokens.c.expires > time.time(), users.c.active.is_(True))).mappings().first()
         if row is None:
             raise HTTPException(401, "Bitte anmelden.")
         return dict(row)
 
     def public_user(user):
-        return {key: user[key] for key in ("id", "email", "admin")}
+        return {key: user[key] for key in ("id", "email", "admin", "active")}
 
     def create_user(credentials: Credentials, profile=None):
         email = credentials.email.strip().casefold()
@@ -163,7 +166,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         with engine.begin() as connection:
             user = connection.execute(sa.select(users).where(users.c.email == email)).mappings().first()
             valid = verify_password(credentials.password, user["password"] if user else dummy_password)
-            if not user or not valid:
+            if not user or not user["active"] or not valid:
                 raise HTTPException(401, "E-Mail oder Passwort stimmt nicht.")
             token = secrets.token_urlsafe(48)
             connection.execute(tokens.delete().where(tokens.c.expires <= now))
@@ -201,6 +204,46 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         if not user["admin"]:
             raise HTTPException(403, "Nur Administratoren dürfen Benutzer anlegen.")
         create_user(credentials)
+        return {"ok": True}
+
+    def require_admin(user):
+        if not user["admin"]:
+            raise HTTPException(403, "Nur Administratoren dürfen Benutzer verwalten.")
+
+    @app.get("/api/v1/users")
+    def list_users(user=Depends(current_user)):
+        require_admin(user)
+        with engine.connect() as connection:
+            rows = connection.execute(sa.select(users.c.id, users.c.email, users.c.admin, users.c.active)
+                                      .order_by(users.c.email)).mappings().all()
+        return {"users": [dict(row) for row in rows]}
+
+    @app.patch("/api/v1/users/{user_id}")
+    def set_user_status(user_id: str, status: UserStatus, user=Depends(current_user)):
+        require_admin(user)
+        if user_id == user["id"]:
+            raise HTTPException(422, "Das eigene Administratorkonto kann hier nicht deaktiviert werden.")
+        with engine.begin() as connection:
+            target = connection.execute(sa.select(users.c.id).where(users.c.id == user_id)).first()
+            if target is None:
+                raise HTTPException(404, "Benutzer nicht gefunden.")
+            connection.execute(users.update().where(users.c.id == user_id).values(active=status.active))
+            if not status.active:
+                connection.execute(tokens.delete().where(tokens.c.user_id == user_id))
+        return {"ok": True}
+
+    @app.delete("/api/v1/users/{user_id}")
+    def delete_user(user_id: str, user=Depends(current_user)):
+        require_admin(user)
+        if user_id == user["id"]:
+            raise HTTPException(422, "Das eigene Administratorkonto kann hier nicht gelöscht werden.")
+        with engine.begin() as connection:
+            target = connection.execute(sa.select(users.c.id).where(users.c.id == user_id)).first()
+            if target is None:
+                raise HTTPException(404, "Benutzer nicht gefunden.")
+            connection.execute(records.delete().where(records.c.owner == user_id))
+            connection.execute(tokens.delete().where(tokens.c.user_id == user_id))
+            connection.execute(users.delete().where(users.c.id == user_id))
         return {"ok": True}
 
     def visible(user):

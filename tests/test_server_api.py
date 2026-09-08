@@ -84,6 +84,18 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.save(record).status_code,403)
         self.assertEqual(self.client.post("/api/v1/users",json={"email":"other@example.test","password":"test-password-123"}).status_code,403)
 
+    def test_admin_can_disable_reactivate_and_delete_other_users(self):
+        created = self.client.post("/api/v1/users", json={"email": "friend@example.test", "password": "test-password-123"})
+        self.assertEqual(created.status_code, 200)
+        friend = next(item for item in self.client.get("/api/v1/users").json()["users"] if item["email"] == "friend@example.test")
+        self.assertTrue(friend["active"])
+        self.assertEqual(self.client.patch("/api/v1/users/" + friend["id"], json={"active": False}).status_code, 200)
+        self.assertEqual(self.client.post("/api/v1/auth/login", json={"email": friend["email"], "password": "test-password-123"}).status_code, 401)
+        self.login()
+        self.assertEqual(self.client.patch("/api/v1/users/" + friend["id"], json={"active": True}).status_code, 200)
+        self.assertEqual(self.client.delete("/api/v1/users/" + friend["id"]).status_code, 200)
+        self.assertNotIn(friend["id"], [item["id"] for item in self.client.get("/api/v1/users").json()["users"]])
+
     def test_workout_import_delete_and_shared_library(self):
         raw=b'<workout_file><name>Import</name><workout><SteadyState Duration="60" Power="0.8"/></workout></workout_file>'
         result=self.client.post("/api/v1/import?filename=test.zwo&shared=true",content=raw)
