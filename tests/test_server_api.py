@@ -114,6 +114,14 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(result.status_code,422)
         self.assertNotIn(record["id"],[r["id"] for r in self.client.get("/api/v1/sync").json()["records"]])
 
+    def test_training_plan_is_private_and_validated(self):
+        plan = {"id": str(uuid4()), "kind": "plan", "revision": 0, "payload": {
+            "workout_id": str(uuid4()), "workout_name": "Intervalle", "date": "2026-09-13"}}
+        self.assertEqual(self.save(plan).status_code, 200)
+        self.assertIn(plan["id"], [record["id"] for record in self.client.get("/api/v1/sync").json()["records"]])
+        invalid = {**plan, "id": str(uuid4()), "payload": {**plan["payload"], "date": "kein-datum"}}
+        self.assertEqual(self.save(invalid).status_code, 422)
+
     def test_password_change_revokes_existing_tokens(self):
         self.assertEqual(self.client.post("/api/v1/auth/password",json={"email":"", "password":"different-password-456"}).status_code,200)
         self.assertEqual(self.client.get("/api/v1/auth/me").status_code,401)

@@ -8,6 +8,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
@@ -331,7 +332,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     return app
 
 def validate_record(kind, payload, deleted=False):
-    if kind not in {"workout", "profile", "session", "settings"}:
+    if kind not in {"workout", "profile", "session", "plan", "settings"}:
         raise ValueError("Unbekannter Datensatztyp")
     json.dumps(payload, allow_nan=False)
     if deleted:
@@ -351,6 +352,11 @@ def validate_record(kind, payload, deleted=False):
         session = WorkoutSessionRecord.from_dict(payload)
         if not 0 <= session.duration_sec <= 86400 or len(session.samples) > 400000:
             raise ValueError("Ungültige Trainingsdauer oder Messwertanzahl")
+    elif kind == "plan":
+        UUID(str(payload.get("workout_id", "")))
+        if not isinstance(payload.get("workout_name"), str) or not payload["workout_name"].strip() or len(payload["workout_name"]) > 200:
+            raise ValueError("Ungültiger Trainingsname")
+        date.fromisoformat(str(payload.get("date", "")))
     elif kind == "settings":
         if set(payload) - {"default_ftp", "tick_interval_ms"}:
             raise ValueError("Diese Einstellungen sind gerätespezifisch.")
