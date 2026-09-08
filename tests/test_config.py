@@ -16,8 +16,10 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.paths.database_path, (root / "data" / "cados.sqlite3").resolve())
 
     def test_platform_data_paths(self):
-        with patch("cados.config.sys.platform", "darwin"), patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(str(user_data_directory()).endswith("Library/Application Support/Cados"))
+        home = Path(tempfile.gettempdir()) / "cados-test-user"
+        with patch("cados.config.sys.platform", "darwin"), patch.dict(os.environ, {}, clear=True), \
+                patch("cados.config.Path.home", return_value=home):
+            self.assertEqual(user_data_directory(), home / "Library" / "Application Support" / "Cados")
         with patch("cados.config.sys.platform", "win32"), patch.dict(os.environ, {"LOCALAPPDATA": "C:/Local"}, clear=True):
             self.assertEqual(user_data_directory(), Path("C:/Local") / "Cados")
 

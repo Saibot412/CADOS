@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from cados.models.profile import UserProfile
@@ -80,5 +81,5 @@ class StorageTests(unittest.TestCase):
         self.store.backup(backup)
         reopened = DataStore(backup)
         self.assertEqual(reopened.list_profiles()[0].name, "Backup")
-        with sqlite3.connect(backup) as connection:
+        with closing(sqlite3.connect(backup)) as connection:
             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
