@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -51,6 +52,15 @@ def main() -> None:
         ("NSBluetoothPeripheralUsageDescription", "CADOS Connector verbindet sich per Bluetooth mit deinem Smart Trainer und Herzfrequenzsensor."),
     ):
         run("/usr/libexec/PlistBuddy", "-c", f"Add :{key} string {value}", str(plist))
+    with plist.open('rb') as handle:
+        info = plistlib.load(handle)
+    info['CFBundleURLTypes'] = [{
+        'CFBundleURLName': 'local.cados.connector',
+        'CFBundleURLSchemes': ['cados-connector'],
+        'CFBundleTypeRole': 'Viewer',
+    }]
+    with plist.open('wb') as handle:
+        plistlib.dump(info, handle)
     run("codesign", "--force", "--deep", "--sign", "-", str(app))
     args.output.mkdir(parents=True, exist_ok=True)
     dmg = args.output / "CADOS-Connector-macOS.dmg"

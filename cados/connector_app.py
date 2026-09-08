@@ -6,7 +6,7 @@ import logging
 import sys
 import threading
 
-from PySide6.QtCore import QObject, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget
 
@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 class StatusBridge(QObject):
     changed = Signal(dict)
+
+
+class ConnectorApplication(QApplication):
+    open_requested = Signal()
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.FileOpen and event.url().scheme() == 'cados-connector':
+            self.open_requested.emit()
+            return True
+        return super().event(event)
 
 
 class ConnectorWindow(QMainWindow):
@@ -92,7 +102,9 @@ class ConnectorWindow(QMainWindow):
 
     def open_web(self) -> None:
         if self.config.workout_library_url:
-            QDesktopServices.openUrl(QUrl(self.config.workout_library_url))
+            url = QUrl(self.config.workout_library_url)
+            url.setFragment('connector-ready')
+            QDesktopServices.openUrl(url)
 
     def update_status(self, data: dict) -> None:
         connected = bool(data.get("connected"))
@@ -130,7 +142,7 @@ class ConnectorWindow(QMainWindow):
 def run() -> int:
     config = AppConfig.load()
     configure_logging(config.paths.logs_dir)
-    app = QApplication(sys.argv)
+    app = ConnectorApplication(sys.argv)
     app.setApplicationName("CADOS Connector")
     app.setQuitOnLastWindowClosed(False)
     bridge = StatusBridge()
@@ -142,6 +154,12 @@ def run() -> int:
         app.quit()
 
     window = ConnectorWindow(config, quit_connector)
+    def show_connector() -> None:
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+        window.open_web()
+    app.open_requested.connect(show_connector)
     bridge.changed.connect(window.update_status)
     icon = QIcon(str(config.paths.app_icon_path))
     tray = QSystemTrayIcon(icon, app)
@@ -169,6 +187,7 @@ def run() -> int:
     thread = threading.Thread(target=run_service, name="cados-connector", daemon=True)
     thread.start()
     window.show()
+    QTimer.singleShot(0, window.open_web)
     exit_code = app.exec()
     service.close()
     thread.join(timeout=5)

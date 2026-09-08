@@ -3,9 +3,9 @@
 let currentPage = 'home', selectedCategory = '', preparedWorkout = null;
 const pageDescriptions = {
   home: 'Dein Training. Dein Rhythmus.', workout: 'Finde die Einheit, die heute zu dir passt.',
-  calendar: 'Gib deinem Training einen festen Platz.', profile: 'Die Grundlage für ein Training, das zu dir passt.',
+  calendar: 'Gib deinem Training einen festen Platz.',
   session: 'Jede Einheit zählt. Hier siehst du deinen Fortschritt.',
-  settings: 'Alles so, wie du es brauchst.', users: 'Konten und Zugriffsrechte verwalten.', live: ''
+  settings: 'Deine Trainingswerte und dein Passwort an einem Ort.', users: 'Konten und Zugriffsrechte verwalten.', live: ''
 };
 const navPaths = {
   home:'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z',
@@ -42,6 +42,26 @@ function localDate(date = new Date()) {
   return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
 }
 function durationOf(workout) { return Math.round((workout.blocks || []).reduce((n,b)=>n+b.duration_sec,0)/60); }
+function renderSettings() {
+  const profile=active('profile')[0]?.payload, form=$('#settings-form');
+  form.elements.name.value=profile?.name||user?.name||'';
+  form.elements.weight_kg.value=profile?.weight_kg??'';
+  form.elements.ftp.value=profile?.ftp??active('settings')[0]?.payload.default_ftp??250;
+  form.elements.max_hr.value=profile?.max_hr??'';
+}
+async function saveTrainingSettings(event) {
+  event.preventDefault();const form=event.target,submit=form.querySelector('button');submit.disabled=true;
+  try {
+    const previous=active('profile')[0],id=previous?.id||crypto.randomUUID(),now=new Date().toISOString();
+    const name=form.elements.name.value.trim();if(!name)throw Error('Bitte einen Benutzernamen eingeben.');
+    const record={...(previous||{id,kind:'profile',revision:0,shared:false,deleted:false}),payload:{
+      ...previous?.payload,id,name,ftp:Number(form.elements.ftp.value),weight_kg:Number(form.elements.weight_kg.value),
+      max_hr:form.elements.max_hr.value===''?null:Number(form.elements.max_hr.value),
+      created_at:previous?.payload.created_at||now,updated_at:now
+    }};
+    await save(record);renderLive();notice('Trainingswerte gespeichert. Vorschau und Leistungszonen sind aktualisiert.');
+  } catch(error){notice(error.message,true);} finally{submit.disabled=false;}
+}
 function primaryButton(label, action) { const result = button(label,action); result.className = 'primary'; return result; }
 function planWorkout(record) {
   $('#workout-detail').close(); navigate('calendar');

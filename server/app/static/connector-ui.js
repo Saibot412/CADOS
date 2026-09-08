@@ -1,5 +1,13 @@
 "use strict";
 
+let connectorInstalledHere = false;
+try { connectorInstalledHere = localStorage.getItem('cados.connector.installed') === 'yes'; } catch {}
+if (location.hash === '#connector-ready') {
+  connectorInstalledHere = true;
+  try { localStorage.setItem('cados.connector.installed', 'yes'); } catch {}
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
 const renderLiveBase = renderLive;
 renderLive = function () {
   renderLiveBase();
@@ -16,11 +24,23 @@ renderLive = function () {
     link.id = "connector-download-link";
     link.target = "_blank";
     link.rel = "noopener";
-    download.append(title, detail, link);
+    const fallback = document.createElement('a');
+    fallback.id = 'connector-alternative';
+    download.append(title, detail, link, fallback);
     document.querySelector(".heading").after(download);
   }
   const link = document.querySelector("#connector-download-link");
-  link.href = connectorRelease?.macos?.url || "https://github.com/Saibot412/CADOS/releases/download/v0.2.0/CADOS-Connector-macOS.dmg";
-  link.textContent = "Connector für macOS laden";
+  const downloadUrl = connectorRelease?.macos?.url || "https://github.com/Saibot412/CADOS/releases/download/v0.2.0/CADOS-Connector-macOS.dmg";
+  link.href = connectorInstalledHere ? 'cados-connector://open' : downloadUrl;
+  link.textContent = connectorInstalledHere ? 'Connector starten' : 'Connector für macOS laden';
+  link.target = connectorInstalledHere ? '_self' : '_blank';
+  const fallback = document.querySelector('#connector-alternative');
+  fallback.href = connectorInstalledHere ? downloadUrl : 'cados-connector://open';
+  fallback.target = connectorInstalledHere ? '_blank' : '_self';
+  fallback.rel = 'noopener';
+  fallback.textContent = connectorInstalledHere ? 'Erneut herunterladen' : 'Bereits installiert? Starten';
+  download.querySelector('span').textContent = connectorInstalledHere
+    ? 'Starte den Connector auf diesem Mac, um deinen Trainer zu verbinden.'
+    : 'Installiere den Connector einmal auf deinem Mac und öffne ihn. Er verbindet deinen Trainer mit CADOS.';
   download.hidden = connectorConnected;
 };

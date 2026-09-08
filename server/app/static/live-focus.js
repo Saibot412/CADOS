@@ -51,19 +51,18 @@ function renderLiveChart() {
   const actual = liveHistory.filter(point => point.elapsed <= total + 1);
   const powerValues = [...power.map(point => point[1]), ...actual.map(point => point.watts), Number(liveData.target_watts) || 0].filter(Number.isFinite);
   const lowPower = Math.max(0, Math.floor((Math.min(...powerValues, 0) - 20) / 25) * 25);
-  const highPower = Math.max(lowPower + 50, Math.ceil((Math.max(...powerValues, 100) + 20) / 25) * 25);
+  const highPower = Math.max(ftp * 1.7, Math.ceil((Math.max(...powerValues, 100) + 20) / 25) * 25);
   const cadenceValues = [...cadence.map(point => point[1]), ...actual.map(point => point.cadence)].filter(Number.isFinite);
   const lowCadence = cadenceValues.length ? Math.max(0, Math.floor((Math.min(...cadenceValues) - 5) / 5) * 5) : 60;
   const highCadence = cadenceValues.length ? Math.ceil((Math.max(...cadenceValues) + 5) / 5) * 5 : 110;
-  const width = 1000, height = 300, left = 53, right = 58, top = 32, bottom = 31;
+  const width = 1000, height = 300, left = 115, right = 58, top = 32, bottom = 31;
   const chartWidth = width - left - right, chartHeight = height - top - bottom;
   const x = seconds => left + Math.min(Math.max(seconds / total, 0), 1) * chartWidth;
   const wattsY = watts => top + (1 - (watts - lowPower) / (highPower - lowPower)) * chartHeight;
   const cadenceY = value => top + (1 - (value - lowCadence) / Math.max(1, highCadence - lowCadence)) * chartHeight;
+  drawPowerZones(svg,{ftp,maximum:highPower,left,right,top,bottom,width,height});
   for (let row = 0; row < 4; row++) {
     const ratio = row / 3, y = top + ratio * chartHeight, watts = Math.round(highPower - ratio * (highPower - lowPower));
-    svg.append(svgElement("line", {x1: left, y1: y, x2: width - right, y2: y, stroke: "#e5edef", "stroke-width": 1}));
-    svgText(svg, watts + " W", left - 9, y + 4, {"text-anchor": "end"});
     if (cadenceValues.length) svgText(svg, Math.round(highCadence - ratio * (highCadence - lowCadence)) + " rpm", width - right + 9, y + 4, {fill: "#3b79b8"});
   }
   const points = list => list.map(point => x(point[0]).toFixed(1) + "," + wattsY(point[1]).toFixed(1)).join(" ");
@@ -77,6 +76,8 @@ function renderLiveChart() {
   if (liveData.current_watts != null) svg.append(svgElement("circle", {cx: progressX, cy: wattsY(Number(liveData.current_watts)), r: 4.5, fill: "#193d55", stroke: "#fff", "stroke-width": 2}));
   svgText(svg, "0:00", left, height - 8);
   svgText(svg, formatTime(total), width - right, height - 8, {"text-anchor": "end"});
+  svgText(svg, 'Zeit (min:sek)', (left + width - right)/2, height - 8, {'text-anchor':'middle'});
+  svgText(svg, 'rpm', width-right+9, top-12, {fill:'#3b79b8'});
   if (!power.length) svgText(svg, "Starte ein Workout, um den geplanten Verlauf zu sehen.", width / 2, height / 2, {"text-anchor": "middle", "font-size": 14});
 }
 
