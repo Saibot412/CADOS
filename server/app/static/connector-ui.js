@@ -14,6 +14,8 @@ renderLive = function () {
     detail.textContent = "Installiere einmal den CADOS Connector für Bluetooth und ERG-Steuerung auf deinem Mac.";
     const link = document.createElement("a");
     link.id = "connector-download-link";
+    link.target = "_blank";
+    link.rel = "noopener";
     download.append(title, detail, link);
     document.querySelector(".heading").after(download);
   }

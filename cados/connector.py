@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -145,8 +146,14 @@ class ConnectorService:
             raise RuntimeError("Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
         try:
             import websockets
+            import certifi
         except ImportError as exc:  # pragma: no cover - handled by packaged dependency
-            raise RuntimeError("Der CADOS Connector benötigt das Paket websockets.") from exc
+            raise RuntimeError("Der CADOS Connector benötigt die Netzwerk-Abhängigkeiten.") from exc
+
+        # The packaged app must not depend on the macOS system certificate store:
+        # on some Macs it is unavailable to embedded Python.  certifi retains
+        # regular certificate and hostname validation using Mozilla's CA roots.
+        tls_context = ssl.create_default_context(cafile=certifi.where())
 
         async def send(socket, message: dict) -> None:
             await socket.send(json.dumps(message, separators=(",", ":")))
@@ -157,6 +164,7 @@ class ConnectorService:
                     self.websocket_url,
                     additional_headers={"Authorization": "Bearer " + self.config.workout_library_token},
                     ping_interval=20, ping_timeout=20,
+                    ssl=tls_context if self.websocket_url.startswith("wss://") else None,
                 ) as socket:
                     await send(socket, {
                         "type": "status", "message": "CADOS Connector bereit", "version": __version__,
