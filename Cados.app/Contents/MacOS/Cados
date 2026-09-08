@@ -6,6 +6,8 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/Cados"
 VENV_DIR="${APP_SUPPORT_DIR}/.venv"
 LOG_FILE="${APP_SUPPORT_DIR}/launcher.log"
+PROJECT_MARKER="${VENV_DIR}/.cados-project"
+REQUIREMENTS_MARKER="${VENV_DIR}/.cados-requirements"
 
 mkdir -p "${APP_SUPPORT_DIR}"
 cd "${PROJECT_DIR}"
@@ -81,6 +83,34 @@ then
     "${VENV_DIR}/bin/python" -m pip install -e .
   } >>"${LOG_FILE}" 2>&1 || {
     show_error "Cados konnte fehlende Abhängigkeiten nicht installieren. Details stehen in ~/Library/Application Support/Cados/launcher.log."
+    exit 1
+  }
+fi
+
+# The environment is shared by all Cados.app copies.  Retarget it when this
+# launcher belongs to a different project folder, so an old copy cannot run
+# stale source code after an update.
+if [ ! -f "${PROJECT_MARKER}" ] || [ "$(cat "${PROJECT_MARKER}" 2>/dev/null)" != "${PROJECT_DIR}" ]; then
+  {
+    echo "Verknüpfe Python-Umgebung mit ${PROJECT_DIR} ..."
+    "${VENV_DIR}/bin/python" -m pip install -e .
+    printf '%s\n' "${PROJECT_DIR}" > "${PROJECT_MARKER}"
+  } >>"${LOG_FILE}" 2>&1 || {
+    show_error "Cados konnte die aktuelle Projektversion nicht aktivieren. Details stehen in ~/Library/Application Support/Cados/launcher.log."
+    exit 1
+  }
+fi
+
+# Install newly declared dependencies after an app update as well. The marker
+# avoids calling pip during ordinary starts.
+REQUIREMENTS_HASH="$(shasum -a 256 pyproject.toml | awk '{print $1}')"
+if [ ! -f "${REQUIREMENTS_MARKER}" ] || [ "$(cat "${REQUIREMENTS_MARKER}" 2>/dev/null)" != "${REQUIREMENTS_HASH}" ]; then
+  {
+    echo "Aktualisiere CADOS-Abhängigkeiten ..."
+    "${VENV_DIR}/bin/python" -m pip install -e .
+    printf '%s\n' "${REQUIREMENTS_HASH}" > "${REQUIREMENTS_MARKER}"
+  } >>"${LOG_FILE}" 2>&1 || {
+    show_error "Cados konnte seine Python-Abhängigkeiten nicht aktualisieren. Details stehen in ~/Library/Application Support/Cados/launcher.log."
     exit 1
   }
 fi

@@ -66,7 +66,12 @@ class WorkoutLibraryClient:
             },
         )
         try:
-            with urlopen(request, timeout=self.timeout, context=ssl.create_default_context()) as response:
+            # macOS Python installations can have an empty or stale system CA store.
+            # certifi supplies the maintained Mozilla root store while preserving full
+            # certificate and hostname verification.
+            import certifi
+            context = ssl.create_default_context(cafile=certifi.where())
+            with urlopen(request, timeout=self.timeout, context=context) as response:
                 raw = response.read(self.MAX_RESPONSE_BYTES + 1)
         except HTTPError as exc:
             if exc.code in {401, 403}:
