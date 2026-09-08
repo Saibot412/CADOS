@@ -141,6 +141,8 @@ class ServerApiTests(unittest.TestCase):
     def test_web_and_bundled_assets_are_served(self):
         self.assertEqual(self.client.get("/").status_code,200)
         self.assertEqual(self.client.get("/static/app.js").status_code,200)
+        self.assertEqual(self.client.get("/static/live-focus.js").status_code,200)
+        self.assertEqual(self.client.get("/static/live-focus.css").status_code,200)
         release = self.client.get("/static/connector-release.json")
         self.assertEqual(release.status_code, 200)
         self.assertEqual(release.json()["version"], "0.2.0")
