@@ -131,6 +131,7 @@ class ServerApiTests(unittest.TestCase):
         with self.client.websocket_connect("/api/v1/live/browser") as browser:
             self.assertEqual(browser.receive_json(), {"type": "connector", "connected": False})
             with self.client.websocket_connect("/api/v1/live/connector", headers={"Authorization": "Bearer " + token}) as connector:
+                self.assertEqual(connector.receive_json(), {"type": "browser", "connected": True})
                 self.assertEqual(browser.receive_json(), {"type": "connector", "connected": True})
                 connector.send_json({"type": "telemetry", "payload": {"current_watts": 250}})
                 self.assertEqual(browser.receive_json(), {"type": "telemetry", "payload": {"current_watts": 250}})

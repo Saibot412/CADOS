@@ -65,8 +65,10 @@ class ConnectorHub:
         async with self.lock:
             previous = self.connectors.get(user_id)
             self.connectors[user_id] = socket
+            browser_connected = bool(self.browsers.get(user_id))
         if previous is not None and previous is not socket:
             await previous.close(code=4000, reason="Durch einen neuen Connector ersetzt")
+        await socket.send_json({"type": "browser", "connected": browser_connected})
         await self.broadcast(user_id, {"type": "connector", "connected": True})
 
     async def remove_connector(self, user_id: str, socket: WebSocket) -> None:
@@ -77,15 +79,31 @@ class ConnectorHub:
 
     async def add_browser(self, user_id: str, socket: WebSocket) -> None:
         async with self.lock:
+            was_connected = bool(self.browsers.get(user_id))
             self.browsers[user_id].add(socket)
             connected = user_id in self.connectors
         await socket.send_json({"type": "connector", "connected": connected})
+        if not was_connected:
+            await self.browser_status(user_id, True)
 
     async def remove_browser(self, user_id: str, socket: WebSocket) -> None:
         async with self.lock:
             self.browsers[user_id].discard(socket)
-            if not self.browsers[user_id]:
+            browser_connected = bool(self.browsers[user_id])
+            if not browser_connected:
                 self.browsers.pop(user_id, None)
+        if not browser_connected:
+            await self.browser_status(user_id, False)
+
+    async def browser_status(self, user_id: str, connected: bool) -> None:
+        async with self.lock:
+            connector = self.connectors.get(user_id)
+        if connector is None:
+            return
+        try:
+            await connector.send_json({"type": "browser", "connected": connected})
+        except Exception:
+            await self.remove_connector(user_id, connector)
 
     async def broadcast(self, user_id: str, message: dict) -> None:
         async with self.lock:

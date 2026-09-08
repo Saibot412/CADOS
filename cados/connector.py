@@ -10,7 +10,9 @@ import json
 import logging
 import ssl
 import time
+from math import ceil
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from cados import __version__
@@ -26,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 class ConnectorService:
     PUBLISH_INTERVAL_SEC = 0.5
+    BROWSER_IDLE_TIMEOUT_SEC = 10 * 60
 
-    def __init__(self, config: AppConfig | None = None):
+    def __init__(self, config: AppConfig | None = None, *, status_callback: Callable[[dict], None] | None = None):
         self.config = config or AppConfig.load()
         self.store = DataStore(self.config.paths.database_path)
         self.catalog = WorkoutCatalog(self.config.paths.bundled_workouts_dir, self.store)
@@ -38,6 +41,42 @@ class ConnectorService:
         self._last_tick = time.monotonic()
         self._sync_needed = False
         self._next_sync_attempt = 0.0
+        self._status_callback = status_callback
+        self._browser_presence_known = False
+        self._browser_connected = False
+        self._browser_absent_since: float | None = None
+
+    def _report_status(self, **values: object) -> None:
+        if self._status_callback is None:
+            return
+        try:
+            self._status_callback(dict(values))
+        except Exception:
+            logger.debug("Connector-Status konnte nicht weitergegeben werden.", exc_info=True)
+
+    def _set_browser_connected(self, connected: bool) -> None:
+        self._browser_presence_known = True
+        self._browser_connected = connected
+        self._browser_absent_since = None if connected else time.monotonic()
+
+    def _browser_idle_status(self, now: float) -> dict[str, object]:
+        if not self._browser_presence_known or self._browser_connected:
+            return {"browser_connected": self._browser_connected}
+        active = self.engine.snapshot().state in {"running", "paused", "waiting_for_pedal"}
+        if active:
+            return {"browser_connected": False, "auto_close_deferred": True}
+        elapsed = now - (self._browser_absent_since or now)
+        return {
+            "browser_connected": False,
+            "auto_close_remaining_sec": max(0, ceil(self.BROWSER_IDLE_TIMEOUT_SEC - elapsed)),
+        }
+
+    def _should_auto_close(self, now: float) -> bool:
+        if not self._browser_presence_known or self._browser_connected or self._browser_absent_since is None:
+            return False
+        if self.engine.snapshot().state in {"running", "paused", "waiting_for_pedal"}:
+            return False
+        return now - self._browser_absent_since >= self.BROWSER_IDLE_TIMEOUT_SEC
 
     @property
     def configured(self) -> bool:
@@ -94,6 +133,7 @@ class ConnectorService:
                 raise ValueError("Unbekannter Connector-Befehl")
         except Exception as exc:
             logger.warning("Connector-Befehl fehlgeschlagen: %s", exc)
+            self._report_status(error=str(exc))
             await send({"type": "error", "message": str(exc)})
 
     def _save_pending_session(self) -> None:
@@ -143,6 +183,7 @@ class ConnectorService:
 
     async def run(self) -> None:
         if not self.configured:
+            self._report_status(connected=False, error="Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
             raise RuntimeError("Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
         try:
             import websockets
@@ -166,6 +207,7 @@ class ConnectorService:
                     ping_interval=20, ping_timeout=20,
                     ssl=tls_context if self.websocket_url.startswith("wss://") else None,
                 ) as socket:
+                    self._report_status(connected=True, message="Mit CADOS verbunden")
                     await send(socket, {
                         "type": "status", "message": "CADOS Connector bereit", "version": __version__,
                     })
@@ -174,6 +216,13 @@ class ConnectorService:
                     self._last_tick = time.monotonic()
                     while not self._stopping:
                         now = time.monotonic()
+                        if self._should_auto_close(now):
+                            self._report_status(
+                                connected=True, auto_close=True,
+                                message="CADOS-Webseite seit 10 Minuten nicht verbunden. Connector wird beendet.",
+                            )
+                            self._stopping = True
+                            continue
                         self.engine.tick(min(1.0, now - self._last_tick))
                         self._last_tick = now
                         self._save_pending_session()
@@ -184,12 +233,16 @@ class ConnectorService:
                                 logger.info("Training wird bei der nächsten Verbindung synchronisiert: %s", exc)
                                 self._next_sync_attempt = now + 30
                         if now - last_publish >= self.PUBLISH_INTERVAL_SEC:
-                            await send(socket, self._telemetry())
+                            telemetry = self._telemetry()
+                            self._report_status(connected=True, **self._browser_idle_status(now), **telemetry["payload"])
+                            await send(socket, telemetry)
                             last_publish = now
                         done, _ = await asyncio.wait({receiver}, timeout=0.2)
                         if receiver in done:
                             message = json.loads(receiver.result())
-                            if isinstance(message, dict):
+                            if isinstance(message, dict) and message.get("type") == "browser":
+                                self._set_browser_connected(bool(message.get("connected")))
+                            elif isinstance(message, dict):
                                 await self._handle_command(message, lambda item: send(socket, item))
                             receiver = asyncio.create_task(socket.recv())
                     receiver.cancel()
@@ -197,6 +250,7 @@ class ConnectorService:
                 raise
             except Exception as exc:
                 logger.warning("Connector ist vorübergehend nicht mit dem Server verbunden: %s", exc)
+                self._report_status(connected=False, error=f"Verbindung wird erneut versucht: {exc}")
                 await asyncio.sleep(3)
         self._save_pending_session()
 

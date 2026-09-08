@@ -35,7 +35,7 @@ def main() -> None:
     shutil.rmtree(dist, ignore_errors=True)
     entry = build / "connector_entry.py"
     build.mkdir(parents=True)
-    entry.write_text("from cados.connector import run\nraise SystemExit(run())\n", encoding="utf-8")
+    entry.write_text("from cados.connector_app import run\nraise SystemExit(run())\n", encoding="utf-8")
     run(
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
         "--name", "CADOS Connector", "--osx-bundle-identifier", "local.cados.connector",
