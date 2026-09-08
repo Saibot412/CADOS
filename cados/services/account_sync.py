@@ -39,8 +39,25 @@ class AccountSync:
     def run(self):
         user = self.client._request("/api/v1/auth/me")
         self.bind(user)
-        initial = self.local_records()
         remote = {r["id"]: r for r in self.client._request("/api/v1/sync")["records"]}
+        # A CADOS account has exactly one profile. Older desktop versions could
+        # upload a legacy local profile after registration, leaving a second,
+        # unrelated name in the account. Keep the newest server profile and
+        # remove the obsolete records on both sides before normal reconciliation.
+        profiles = [record for record in remote.values() if record["kind"] == "profile" and not record["deleted"]]
+        if len(profiles) > 1:
+            canonical = max(profiles, key=lambda record: str(record["payload"].get("created_at", "")))
+            for record in profiles:
+                if record["id"] == canonical["id"]:
+                    continue
+                deleted = self.client._request("/api/v1/sync", method="POST", payload={"changes": [{
+                    "id": record["id"], "kind": "profile", "revision": record["revision"],
+                    "shared": False, "deleted": True, "payload": record["payload"],
+                }]})["records"][0]
+                remote[deleted["id"]] = deleted
+            with self.store.connection() as db:
+                db.execute("DELETE FROM profiles WHERE id<>?", (canonical["id"],))
+        initial = self.local_records()
         with self.store.connection() as db:
             states = {r["id"]: (json.loads(r["record"]), r["local_hash"]) for r in db.execute("SELECT * FROM sync_state")}
         conflicts = 0

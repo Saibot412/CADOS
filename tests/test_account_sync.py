@@ -83,6 +83,20 @@ class AccountSyncTests(unittest.TestCase):
         self.sync.apply(plan)
         self.assertEqual(self.store.list_plans("2026-09-13")[0]["workout_name"], "Heute")
 
+    def test_duplicate_legacy_profile_is_removed_in_favor_of_registered_profile(self):
+        old = UserProfile(id=str(uuid4()), name="Juli", ftp=200, created_at="2020-01-01T00:00:00+00:00", updated_at="2020-01-01T00:00:00+00:00")
+        registered = UserProfile(id=str(uuid4()), name="Tobias", ftp=250, created_at="2026-01-01T00:00:00+00:00", updated_at="2026-01-01T00:00:00+00:00")
+        for profile in (old, registered):
+            self.assertEqual(self.client.post("/api/v1/sync", json={"changes": [{
+                "id": profile.id, "kind": "profile", "revision": 0,
+                "payload": profile.to_dict(),
+            }]}).status_code, 200)
+        self.sync.run()
+        remote = [record for record in self.client.get("/api/v1/sync").json()["records"]
+                  if record["kind"] == "profile" and not record["deleted"]]
+        self.assertEqual([record["id"] for record in remote], [registered.id])
+        self.assertEqual([profile.id for profile in self.store.list_profiles()], [registered.id])
+
     def test_unchanged_sync_does_not_rewrite_history(self):
         self.sync.run()
         with patch.object(self.sync,"apply") as apply:

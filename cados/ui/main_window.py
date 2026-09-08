@@ -242,7 +242,6 @@ class MainWindow(MainWindowView):
         self.session_table.itemDoubleClicked.connect(lambda _: self._repeat_selected_session())
 
     def _reload_profiles(self) -> None:
-        selected_id = self.current_profile.id if self.current_profile else None
         self.profiles = self.store.list_profiles()
 
         if not self.profiles:
@@ -251,10 +250,9 @@ class MainWindow(MainWindowView):
             self.edit_profile_button.setText("Profil einrichten")
             return
 
-        self.current_profile = next(
-            (profile for profile in self.profiles if profile.id == selected_id),
-            self.profiles[0],
-        )
+        # There is one profile per account. Pick the most recently maintained
+        # record so an old legacy profile can never be shown after sync.
+        self.current_profile = max(self.profiles, key=lambda profile: profile.updated_at)
         self._apply_current_profile()
 
     def _apply_current_profile(self) -> None:
@@ -436,6 +434,7 @@ class MainWindow(MainWindowView):
                 self.config.workout_library_token = ""
                 self.config.save_settings({"workout_library_token": ""})
                 self.library_settings_button.setText("Konto")
+                self.profile_summary_label.setText("Offline · kein Konto angemeldet")
                 self.statusBar().showMessage("Abgemeldet · lokale Daten bleiben für Offline-Training erhalten", 8000)
                 return
             if result.get("client"):
