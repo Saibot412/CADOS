@@ -40,7 +40,9 @@ def run() -> int:
     if config.paths.app_icon_path.exists():
         app.setWindowIcon(QIcon(str(config.paths.app_icon_path)))
 
-    store = DataStore(config.paths.database_path)
+    account = config.current_account
+    database_path = config.database_path_for_account(account) if account else config.paths.database_path
+    store = DataStore(database_path)
     migrated = store.migrate_legacy_json(
         config.paths.legacy_profiles_path, config.paths.legacy_sessions_path
     )

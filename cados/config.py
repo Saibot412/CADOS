@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sys
 from dataclasses import dataclass
@@ -92,25 +93,34 @@ class AppConfig:
         if not isinstance(payload, dict):
             raise ValueError("Ungültiges Format der Einstellungen.")
         settings.update(payload)
-        known_accounts = []
+        known_accounts: list[dict[str, str]] = []
         for account in settings["known_accounts"] if isinstance(settings["known_accounts"], list) else []:
             if not isinstance(account, dict):
                 continue
             email, url = str(account.get("email", "")).strip(), str(account.get("url", "")).strip().rstrip("/")
             if email and url:
-                known_accounts.append({"email": email, "url": url})
+                known_accounts.append({
+                    "email": email,
+                    "url": url,
+                    "token": str(account.get("token", "")).strip(),
+                    "user_id": str(account.get("user_id", "")).strip(),
+                    "data_file": str(account.get("data_file", "")).strip(),
+                })
+        current_url = str(os.getenv("CADOS_LIBRARY_URL") or settings["workout_library_url"]).strip().rstrip("/")
+        current_token = str(os.getenv("CADOS_LIBRARY_TOKEN") or settings["workout_library_token"]).strip()
+        if current_url and current_token:
+            for account in known_accounts:
+                if account["url"] == current_url:
+                    account["token"] = account["token"] or current_token
+                    break
         return cls(
             paths=paths,
             tick_interval_ms=min(1000, max(100, int(settings["tick_interval_ms"]))),
             trainer_scan_timeout_sec=max(1, int(settings["trainer_scan_timeout_sec"])),
             default_ftp=max(100, int(settings["default_ftp"])),
             theme_mode="light",
-            workout_library_url=str(
-                os.getenv("CADOS_LIBRARY_URL") or settings["workout_library_url"]
-            ).strip(),
-            workout_library_token=str(
-                os.getenv("CADOS_LIBRARY_TOKEN") or settings["workout_library_token"]
-            ).strip(),
+            workout_library_url=current_url,
+            workout_library_token=current_token,
             known_accounts=known_accounts,
         )
 
@@ -129,11 +139,72 @@ class AppConfig:
         self.theme_mode = "light"
         self.save_settings({"theme_mode": "light"})
 
-    def remember_account(self, url: str, email: str) -> None:
-        account = {"url": url.strip().rstrip("/"), "email": email.strip()}
-        if not all(account.values()):
-            return
-        self.known_accounts = [item for item in self.known_accounts if item != account]
+    @property
+    def active_accounts(self) -> list[dict[str, str]]:
+        return [account for account in self.known_accounts if account.get("token")]
+
+    @property
+    def current_account(self) -> dict[str, str] | None:
+        return next((account for account in self.active_accounts
+                     if account["url"] == self.workout_library_url
+                     and account["token"] == self.workout_library_token), None)
+
+    def remember_account(
+        self, url: str, email: str, *, token: str = "", user_id: str = ""
+    ) -> dict[str, str]:
+        normalized_url, normalized_email = url.strip().rstrip("/"), email.strip()
+        existing = next((item for item in self.known_accounts
+                         if item["url"] == normalized_url and item["email"] == normalized_email), None)
+        if existing:
+            data_file = existing.get("data_file", "")
+            token = token or existing.get("token", "")
+            user_id = user_id or existing.get("user_id", "")
+        else:
+            key_source = f"{normalized_url}\0{user_id or normalized_email}".encode("utf-8")
+            key = hashlib.sha256(key_source).hexdigest()[:20]
+            data_file = "" if not self.known_accounts else f"accounts/{key}/cados.sqlite3"
+        account = {
+            "url": normalized_url,
+            "email": normalized_email,
+            "token": token.strip(),
+            "user_id": user_id.strip(),
+            "data_file": data_file,
+        }
+        if not account["url"] or not account["email"]:
+            return account
+        self.known_accounts = [item for item in self.known_accounts
+                               if not (item["url"] == account["url"] and item["email"] == account["email"])]
         self.known_accounts.insert(0, account)
         self.known_accounts = self.known_accounts[:10]
         self.save_settings({"known_accounts": self.known_accounts})
+        return account
+
+    def select_account(self, account: dict[str, str]) -> None:
+        self.workout_library_url = account.get("url", "")
+        self.workout_library_token = account.get("token", "")
+        self.save_settings({
+            "workout_library_url": self.workout_library_url,
+            "workout_library_token": self.workout_library_token,
+        })
+
+    def deactivate_account(self, url: str, email: str) -> None:
+        for account in self.known_accounts:
+            if account["url"] == url.rstrip("/") and account["email"] == email:
+                account["token"] = ""
+        self.workout_library_url = ""
+        self.workout_library_token = ""
+        self.save_settings({
+            "known_accounts": self.known_accounts,
+            "workout_library_url": "",
+            "workout_library_token": "",
+        })
+
+    def database_path_for_account(self, account: dict[str, str]) -> Path:
+        relative = account.get("data_file", "").strip()
+        if not relative:
+            return self.paths.database_path
+        candidate = (self.paths.data_dir / relative).resolve()
+        if self.paths.data_dir not in candidate.parents:
+            raise ValueError("Ungültiger Kontodatenpfad.")
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        return candidate

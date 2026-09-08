@@ -78,8 +78,8 @@ Ein vollständiger Editor zum freien Zusammenstellen neuer Blöcke ist noch nich
 
 In der Desktop-App **Anmelden** wählen und dieselben Zugangsdaten verwenden.
 Beim ersten Login werden vorhandene lokale Profile und Trainings dem Konto zugeordnet.
-Die lokale Datenbank bleibt an dieses Konto und diese Serveradresse gebunden. Andere
-Konten auf demselben Computer benötigen einen separaten `CADOS_DATA_DIR`.
+Die Desktop-App verwaltet für weitere angemeldete Konten automatisch getrennte lokale
+SQLite-Datenbanken. Ein separates `CADOS_DATA_DIR` muss dafür nicht manuell gesetzt werden.
 
 ## Synchronisationsregeln
 

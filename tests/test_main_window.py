@@ -95,3 +95,29 @@ class MainWindowTests(unittest.TestCase):
         self.window._apply_training_snapshot(snapshot)
         self.assertEqual(self.window.current_watts_value.text(), "200 W")
         self.assertEqual(self.window.engine.snapshot(), snapshot)
+
+    def test_desktop_has_no_workout_import_action(self):
+        self.assertFalse(hasattr(self.window, "import_workout_button"))
+
+    def test_one_saved_account_is_activated_without_showing_a_chooser(self):
+        account = self.window.config.remember_account(
+            "https://cados.example", "rider@example.test", token="saved-session"
+        )
+        with patch.object(self.window, "_activate_saved_account") as activate, \
+                patch.object(self.window, "_show_account_start") as chooser:
+            self.window._begin_account_startup()
+        activate.assert_called_once_with(account)
+        chooser.assert_not_called()
+
+    def test_multiple_saved_accounts_show_the_account_chooser(self):
+        self.window.config.remember_account(
+            "https://cados.example", "one@example.test", token="one"
+        )
+        self.window.config.remember_account(
+            "https://cados.example", "two@example.test", token="two"
+        )
+        with patch.object(self.window, "_activate_saved_account") as activate, \
+                patch.object(self.window, "_show_account_start") as chooser:
+            self.window._begin_account_startup()
+        chooser.assert_called_once_with()
+        activate.assert_not_called()

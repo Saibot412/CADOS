@@ -69,9 +69,9 @@ Cados/
 
 ## Workout-Dateien
 
-Über **Importieren** können CADOS-JSON-Dateien und übliche Zwift-Workouts (`.zwo`)
-direkt ausgewählt werden. Der Import landet in der lokalen SQLite-Datenbank; die
-Originaldatei muss anschließend nicht an ihrem bisherigen Ort bleiben. Unterstützt
+CADOS-JSON-Dateien und übliche Zwift-Workouts (`.zwo`) werden ausschließlich in der
+Web-App importiert und anschließend mit der Desktop-App synchronisiert. So bleibt die
+Workout-Verwaltung zentral und die Mac-/Windows-App auf das Training fokussiert. Unterstützt
 werden in ZWO die Bausteine `Warmup`, `Cooldown`, `Ramp`, `SteadyState` und
 `IntervalsT`. Freies Fahren und feste Watt-ZWO-Dateien werden mit einer verständlichen
 Fehlermeldung abgewiesen, weil sie nicht eindeutig in den ERG-Ablauf von CADOS passen.
@@ -277,6 +277,12 @@ Trainings und Workouts werden beim Start und jede Minute im Leerlauf synchronisi
 **Synchronisieren** startet den Abgleich manuell. Während eines Trainings erfolgt
 kein Abgleich. Die SQLite-Datenbank ermöglicht Training ohne Netzwerkverbindung.
 Beim ersten Login werden die vorhandenen lokalen Daten diesem Konto zugeordnet.
+
+Die Desktop-App merkt sich erfolgreiche Kontoanmeldungen als lokale Sitzungstokens;
+Passwörter werden nicht gespeichert. Bei genau einem angemeldeten Konto wird es beim
+App-Start automatisch verwendet. Bei mehreren angemeldeten Konten erscheint eine
+Kontowahl. Jedes Konto besitzt eine getrennte lokale SQLite-Datenbank, sodass Profile,
+Trainingshistorien und Offline-Daten nicht vermischt werden.
 
 Bei widersprüchlichen Änderungen wird die Serverfassung übernommen; die lokale
 Fassung bleibt gesichert und kann über **Konto** exportiert werden. Dort sind auch

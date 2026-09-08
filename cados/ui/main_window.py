@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -141,10 +142,7 @@ class MainWindow(MainWindowView):
         self._reload_workouts()
         self._refresh_status_labels()
         self._apply_training_snapshot(self.engine.snapshot())
-        if self.workout_library.enabled:
-            QTimer.singleShot(500, self._sync_workouts)
-        elif self.config.known_accounts:
-            QTimer.singleShot(0, self._show_account_start)
+        QTimer.singleShot(0, self._begin_account_startup)
         self.account_timer = QTimer(self)
         self.account_timer.timeout.connect(self._auto_sync_account)
         self.account_timer.start(60000)
@@ -227,7 +225,6 @@ class MainWindow(MainWindowView):
 
     def _connect_signals(self) -> None:
         self.refresh_workouts_button.clicked.connect(self._reload_workouts)
-        self.import_workout_button.clicked.connect(self._import_workout)
         self.sync_workouts_button.clicked.connect(self._sync_workouts)
         self.library_settings_button.clicked.connect(self._configure_workout_library)
         self.workout_list.currentItemChanged.connect(lambda current, _: self._display_selected_workout(current))
@@ -289,11 +286,20 @@ class MainWindow(MainWindowView):
             return
         if self.workout_library.enabled:
             menu = QMenu(self)
-            login = menu.addAction("Erneut anmelden")
+            switch = menu.addAction("Konto wechseln")
+            add_account = menu.addAction("Weiteres Konto hinzufügen")
+            menu.addSeparator()
             logout = menu.addAction("Abmelden")
+            menu.addSeparator()
             backup = menu.addAction("Lokale Daten sichern …")
             conflicts = menu.addAction("Gesicherte Änderungskonflikte exportieren …")
             selected = menu.exec(self.library_settings_button.mapToGlobal(self.library_settings_button.rect().bottomLeft()))
+            if selected == switch:
+                self._show_account_start()
+                return
+            if selected == add_account:
+                self._show_login_dialog()
+                return
             if selected == logout:
                 self._start_library_worker("logout")
                 return
@@ -316,50 +322,67 @@ class MainWindow(MainWindowView):
                     except Exception as exc:
                         QMessageBox.warning(self, "Export fehlgeschlagen", str(exc))
                 return
-            if selected != login:
-                return
+            return
         dialog = AccountLoginDialog(self.workout_library.base_url, self)
         if not dialog.exec():
             return
         self._start_library_worker("login", dialog.values())
 
-    def _show_account_start(self) -> None:
-        if self.workout_library.enabled or self._library_request_in_progress:
-            return
-        from cados.ui.dialogs import AccountLoginDialog, AccountStartDialog
-        chooser = AccountStartDialog(self.config.known_accounts, self)
-        if not chooser.exec():
-            return
-        account = chooser.selected_account()
-        dialog = AccountLoginDialog(account["url"], self, email=account["email"])
+    def _begin_account_startup(self) -> None:
+        accounts = self.config.active_accounts
+        if not accounts and self.workout_library.enabled:
+            self._start_library_worker("sync")
+        elif not accounts:
+            self._show_login_dialog()
+        elif len(accounts) == 1:
+            self._activate_saved_account(accounts[0])
+        else:
+            self._show_account_start()
+
+    def _show_login_dialog(self) -> None:
+        from cados.ui.dialogs import AccountLoginDialog
+        dialog = AccountLoginDialog(self.workout_library.base_url, self)
         if dialog.exec():
             self._start_library_worker("login", dialog.values())
 
-    def _import_workout(self) -> None:
-        file_name, _ = QFileDialog.getOpenFileName(
-            self,
-            "Workout importieren",
-            "",
-            "Workout-Dateien (*.json *.zwo);;CADOS JSON (*.json);;Zwift Workout (*.zwo)",
-        )
-        if not file_name:
+    def _show_account_start(self) -> None:
+        if self._library_request_in_progress:
             return
-        try:
-            workout = self.loader.import_file(Path(file_name))
-        except (OSError, UnicodeError, ValueError, WorkoutValidationError) as exc:
-            QMessageBox.warning(self, "Import fehlgeschlagen", str(exc))
+        from cados.ui.dialogs import AccountStartDialog
+        accounts = self.config.active_accounts
+        if not accounts:
+            self._show_login_dialog()
             return
+        chooser = AccountStartDialog(accounts, self)
+        if not chooser.exec():
+            return
+        if chooser.wants_add_account():
+            self._show_login_dialog()
+            return
+        account = chooser.selected_account()
+        if account:
+            self._activate_saved_account(account)
+
+    def _activate_saved_account(self, account: dict[str, str]) -> None:
+        self.config.select_account(account)
+        self.workout_library = WorkoutLibraryClient(account["url"], account["token"])
+        database_path = self.config.database_path_for_account(account)
+        if self.store.database_path != database_path:
+            self._replace_account_store(DataStore(database_path))
+        self.library_settings_button.setText(account["email"].split("@", 1)[0])
+        self._start_library_worker("sync")
+
+    def _replace_account_store(self, store: DataStore) -> None:
+        self.store = store
+        self.loader = WorkoutCatalog(self.config.paths.bundled_workouts_dir, self.store)
+        self.current_profile = None
+        self.current_workout = None
+        self.current_workout_template = None
+        self.engine.set_profile(None)
+        self.stack.setCurrentWidget(self.library_page)
+        self._show_training_header(False)
+        self._reload_profiles()
         self._reload_workouts()
-        self._select_workout(workout.source_path.name)
-        if self.workout_library.enabled:
-            self._start_library_worker("publish", workout)
-            self.statusBar().showMessage(
-                f"{workout.name} importiert · Veröffentlichung läuft …"
-            )
-        else:
-            self.statusBar().showMessage(
-                f"{workout.name} lokal importiert · Server noch nicht eingerichtet", 8000
-            )
 
     def _select_workout(self, source_name: str) -> None:
         for row in range(self.workout_list.count()):
@@ -377,7 +400,7 @@ class MainWindow(MainWindowView):
         self._start_library_worker("sync")
         self.statusBar().showMessage("Online-Workouts werden geladen …")
 
-    def _start_library_worker(self, action: str, workout: WorkoutTemplate | None = None) -> None:
+    def _start_library_worker(self, action: str, payload: object = None) -> None:
         if self.engine.state in {"running", "paused", "waiting_for_pedal"}:
             self.statusBar().showMessage("Synchronisation erfolgt nach dem Training", 4000)
             return
@@ -387,33 +410,44 @@ class MainWindow(MainWindowView):
         self._library_request_in_progress = True
         self.sync_workouts_button.setEnabled(False)
         for widget in (self.start_workout_button, self.edit_profile_button,
-                       self.import_workout_button, self.library_settings_button, self.repeat_session_button):
+                       self.library_settings_button, self.repeat_session_button):
             widget.setEnabled(False)
         threading.Thread(
             target=self._run_library_worker,
-            args=(action, workout),
+            args=(action, payload),
             daemon=True,
         ).start()
 
-    def _run_library_worker(self, action: str, workout: WorkoutTemplate | None) -> None:
+    def _run_library_worker(self, action: str, payload: object) -> None:
         from cados.services.account_sync import AccountSync
         result: dict[str, object] = {"action": action, "ok": False}
         try:
             client = self.workout_library
             if action == "logout":
+                account = self.config.current_account
+                result["account_email"] = account["email"] if account else ""
+                result["account_url"] = client.base_url
                 client._request("/api/v1/auth/logout", method="POST", payload={})
                 result["ok"] = True
                 return
             if action == "login":
-                url, email, password = workout
+                url, email, password = cast(tuple[str, str, str], payload)
                 client = WorkoutLibraryClient(url, "")
                 user = client.login(email, password)
-                AccountSync(self.store, client, self.config).bind(user)
+                account = self.config.remember_account(
+                    url, email, token=client.token, user_id=str(user["id"])
+                )
+                target_store = DataStore(self.config.database_path_for_account(account))
+                sync = AccountSync(target_store, client, self.config)
+                sync.bind(user)
                 result["client"] = client
+                result["account"] = account
+                result["store"] = target_store
                 result["account_email"] = email
             else:
                 result["account_email"] = client._request("/api/v1/auth/me")["email"]
-            result["count"], result["conflicts"] = AccountSync(self.store, client, self.config).run()
+                sync = AccountSync(self.store, client, self.config)
+            result["count"], result["conflicts"] = sync.run()
             result["ok"] = True
         except Exception as exc:
             logger.warning("Workout-Bibliothek fehlgeschlagen: %s", exc)
@@ -426,26 +460,33 @@ class MainWindow(MainWindowView):
         self._library_request_in_progress = False
         self.sync_workouts_button.setEnabled(True)
         for widget in (self.start_workout_button, self.edit_profile_button,
-                       self.import_workout_button, self.library_settings_button, self.repeat_session_button):
+                       self.library_settings_button, self.repeat_session_button):
             widget.setEnabled(True)
         if result.get("ok"):
             if result.get("action") == "logout":
                 self.workout_library.token = ""
-                self.config.workout_library_token = ""
-                self.config.save_settings({"workout_library_token": ""})
+                self.config.deactivate_account(
+                    str(result.get("account_url") or ""), str(result.get("account_email") or "")
+                )
                 self.library_settings_button.setText("Konto")
                 self.profile_summary_label.setText("Offline · kein Konto angemeldet")
                 self.statusBar().showMessage("Abgemeldet · lokale Daten bleiben für Offline-Training erhalten", 8000)
                 return
             if result.get("client"):
-                self.workout_library = result["client"]
+                self.workout_library = cast(WorkoutLibraryClient, result["client"])
+                if result.get("store"):
+                    self._replace_account_store(cast(DataStore, result["store"]))
                 self.config.workout_library_url = self.workout_library.base_url
                 self.config.workout_library_token = self.workout_library.token
                 self.config.save_settings({"workout_library_url": self.workout_library.base_url,
                     "workout_library_token": self.workout_library.token})
-            self.config.remember_account(self.workout_library.base_url, str(result.get("account_email") or ""))
+            account = self.config.remember_account(
+                self.workout_library.base_url,
+                str(result.get("account_email") or ""),
+                token=self.workout_library.token,
+            )
             self._reload_profiles()
-            self.library_settings_button.setText("Konto")
+            self.library_settings_button.setText(account["email"].split("@", 1)[0] or "Konto")
             self._reload_workouts()
             self._suggest_today_plan()
             updated_config = AppConfig.load(data_dir=self.config.paths.data_dir)

@@ -70,6 +70,17 @@ QFrame[card="true"][surface="focus"] {
         stop:1 #e5ecf4);
     border: 1px solid #d0dae8;
 }
+QDialog#accountLoginDialog, QDialog#accountStartDialog {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f8fbff,
+        stop:0.55 #eef4fb,
+        stop:1 #e8f0f8);
+}
+QFrame[card="true"][surface="login"] {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(183, 200, 219, 0.72);
+    border-radius: 20px;
+}
 
 /* ── Status & Dividers ───────────────────────────────── */
 QFrame[statusPill="true"] {
@@ -210,6 +221,21 @@ QLabel[chip="hero"] {
     font-weight: 600;
     padding: 6px 10px;
 }
+QLabel[loginTitle="true"] {
+    color: #102a43;
+    font-size: 31px;
+    font-weight: 700;
+}
+QLabel[loginSubtitle="true"] {
+    color: #63788d;
+    font-size: 13px;
+}
+QLabel[chooserBrand="true"] {
+    color: #0a84ff;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 3px;
+}
 
 /* ── Buttons ─────────────────────────────────────────── */
 QPushButton {
@@ -289,6 +315,30 @@ QPushButton[compact="true"] {
     border-radius: 11px;
     padding: 7px 12px;
     min-height: 14px;
+}
+QPushButton[accountCard="true"] {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #d6e1ed;
+    border-radius: 17px;
+    color: #18324b;
+    padding: 10px 18px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 650;
+}
+QPushButton[accountCard="true"]:hover {
+    background: #ffffff;
+    border-color: #80b9f2;
+}
+QPushButton[link="true"] {
+    background: transparent;
+    border: none;
+    color: #6d8195;
+    padding: 5px;
+    font-size: 12px;
+}
+QPushButton[link="true"]:hover {
+    color: #0a84ff;
 }
 
 /* ── Inputs ──────────────────────────────────────────── */

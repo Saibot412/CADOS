@@ -32,10 +32,28 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.workout_library_url, "https://library.example")
             self.assertEqual(config.workout_library_token, "environment-token")
 
-    def test_known_account_is_kept_without_storing_a_password(self):
+    def test_known_account_keeps_a_session_token_without_storing_a_password(self):
         with tempfile.TemporaryDirectory() as directory:
             config = AppConfig.load(Path(directory))
-            config.remember_account("https://cados.saibot.at/", "rider@example.test")
+            config.remember_account(
+                "https://cados.saibot.at/", "rider@example.test", token="session-token"
+            )
             restored = AppConfig.load(Path(directory))
-            self.assertEqual(restored.known_accounts, [{"url": "https://cados.saibot.at", "email": "rider@example.test"}])
+            self.assertEqual(restored.known_accounts[0]["token"], "session-token")
+            self.assertEqual(restored.active_accounts, restored.known_accounts)
             self.assertNotIn("password", restored.paths.settings_path.read_text())
+
+    def test_each_additional_account_gets_an_isolated_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = AppConfig.load(Path(directory))
+            first = config.remember_account(
+                "https://cados.saibot.at", "one@example.test", token="one", user_id="user-one"
+            )
+            second = config.remember_account(
+                "https://cados.saibot.at", "two@example.test", token="two", user_id="user-two"
+            )
+            self.assertEqual(config.database_path_for_account(first), config.paths.database_path)
+            self.assertNotEqual(config.database_path_for_account(second), config.paths.database_path)
+            self.assertNotEqual(
+                config.database_path_for_account(first), config.database_path_for_account(second)
+            )

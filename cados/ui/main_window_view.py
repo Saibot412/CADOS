@@ -215,15 +215,12 @@ class MainWindowView(QMainWindow):
 
         library_actions = QHBoxLayout()
         library_actions.setSpacing(6)
-        self.import_workout_button = QPushButton("Importieren")
-        self.import_workout_button.setProperty("soft", True)
         self.sync_workouts_button = QPushButton("Synchronisieren")
         self.sync_workouts_button.setProperty("soft", True)
         self.library_settings_button = QPushButton("Konto")
         self.library_settings_button.setProperty("soft", True)
-        library_actions.addWidget(self.import_workout_button)
-        library_actions.addWidget(self.sync_workouts_button)
-        library_actions.addWidget(self.library_settings_button)
+        library_actions.addWidget(self.sync_workouts_button, 1)
+        library_actions.addWidget(self.library_settings_button, 1)
         left_layout.addLayout(library_actions)
 
         self.workout_list = QListWidget()

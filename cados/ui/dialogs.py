@@ -5,7 +5,6 @@ from PySide6.QtGui import QIntValidator, QDoubleValidator
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -105,22 +104,50 @@ class AccountLoginDialog(QDialog):
     def __init__(self, url, parent=None, *, email=""):
         super().__init__(parent)
         self.setWindowTitle("Bei CADOS anmelden")
-        self.setMinimumWidth(430)
+        self.setObjectName("accountLoginDialog")
+        self.setFixedSize(680, 470)
         layout = QVBoxLayout(self)
-        info = QLabel("Melde dich mit deinem Web-Konto an. Vorhandene lokale Profile und Trainings werden diesem Konto zugeordnet.")
+        layout.setContentsMargins(44, 36, 44, 32)
+        layout.setSpacing(16)
+
+        eyebrow = QLabel("CADOS  ·  INDOOR CYCLING")
+        eyebrow.setProperty("eyebrow", True)
+        eyebrow.setAlignment(Qt.AlignCenter)
+        title = QLabel("Willkommen zurück")
+        title.setProperty("loginTitle", True)
+        title.setAlignment(Qt.AlignCenter)
+        info = QLabel("Melde dich einmal mit deinem Web-Konto an. CADOS merkt sich diese Anmeldung lokal auf diesem Mac.")
+        info.setProperty("loginSubtitle", True)
         info.setWordWrap(True)
+        info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(eyebrow)
+        layout.addWidget(title)
         layout.addWidget(info)
+
+        card = QFrame()
+        card.setProperty("card", True)
+        card.setProperty("surface", "login")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(26, 22, 26, 22)
+        card_layout.setSpacing(12)
         form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.url = QLineEdit(url or "https://cados.saibot.at")
         self.email = QLineEdit(email)
+        self.email.setPlaceholderText("name@beispiel.at")
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.Password)
+        self.password.setPlaceholderText("Dein Passwort")
         form.addRow("Server", self.url)
         form.addRow("E-Mail", self.email)
         form.addRow("Passwort", self.password)
-        layout.addLayout(form)
+        card_layout.addLayout(form)
+        layout.addWidget(card)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setText("Anmelden")
+        buttons.button(QDialogButtonBox.Ok).setProperty("accent", True)
+        buttons.button(QDialogButtonBox.Cancel).setText("Abbrechen")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -130,31 +157,63 @@ class AccountLoginDialog(QDialog):
 
 
 class AccountStartDialog(QDialog):
-    """Select a previously used account before asking for its password again."""
+    """macOS-style account chooser for already authenticated sessions."""
 
     def __init__(self, accounts: list[dict[str, str]], parent=None):
         super().__init__(parent)
         self.setWindowTitle("CADOS starten")
-        self.setMinimumWidth(430)
+        self.setObjectName("accountStartDialog")
+        self.setFixedSize(620, min(680, 300 + len(accounts) * 82))
         layout = QVBoxLayout(self)
-        info = QLabel("Mit welchem Konto möchtest du CADOS verwenden?")
+        layout.setContentsMargins(42, 34, 42, 30)
+        layout.setSpacing(14)
+        brand = QLabel("CADOS")
+        brand.setProperty("chooserBrand", True)
+        brand.setAlignment(Qt.AlignCenter)
+        title = QLabel("Wer trainiert heute?")
+        title.setProperty("loginTitle", True)
+        title.setAlignment(Qt.AlignCenter)
+        info = QLabel("Wähle ein angemeldetes Konto. Dein Passwort wird nicht erneut benötigt.")
+        info.setProperty("loginSubtitle", True)
         info.setWordWrap(True)
+        info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(brand)
+        layout.addWidget(title)
         layout.addWidget(info)
         self.accounts = accounts
-        self.account = QComboBox()
+        self._selected_account: dict[str, str] | None = None
+        self._add_account = False
         for item in accounts:
-            self.account.addItem(item["email"], item)
-        self.account.addItem("Anderes Konto", None)
-        layout.addWidget(self.account)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Weiter zur Anmeldung")
-        buttons.button(QDialogButtonBox.Cancel).setText("Ohne Konto starten")
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+            email = item["email"]
+            initial = email[:1].upper() if email else "C"
+            button = QPushButton(f"{initial}     {email}\n       Angemeldet · ohne Passwort fortfahren")
+            button.setProperty("accountCard", True)
+            button.setMinimumHeight(66)
+            button.clicked.connect(lambda _checked=False, account=item: self._select(account))
+            layout.addWidget(button)
+        layout.addStretch(1)
+        add_button = QPushButton("＋  Weiteres Konto hinzufügen")
+        add_button.setProperty("soft", True)
+        add_button.clicked.connect(self._add)
+        layout.addWidget(add_button)
+        offline = QPushButton("Ohne Synchronisation fortfahren")
+        offline.setProperty("link", True)
+        offline.clicked.connect(self.reject)
+        layout.addWidget(offline, alignment=Qt.AlignCenter)
 
-    def selected_account(self) -> dict[str, str]:
-        return self.account.currentData() or {"url": "https://cados.saibot.at", "email": ""}
+    def _select(self, account: dict[str, str]) -> None:
+        self._selected_account = account
+        self.accept()
+
+    def _add(self) -> None:
+        self._add_account = True
+        self.accept()
+
+    def wants_add_account(self) -> bool:
+        return self._add_account
+
+    def selected_account(self) -> dict[str, str] | None:
+        return self._selected_account
 
 
 class FTPResultDialog(QDialog):
