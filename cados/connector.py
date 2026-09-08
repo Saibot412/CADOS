@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from cados import __version__
 from cados.config import AppConfig
 from cados.core.workout_engine import WorkoutEngine
 from cados.services.hr_monitor import HRMonitorService
@@ -157,7 +158,9 @@ class ConnectorService:
                     additional_headers={"Authorization": "Bearer " + self.config.workout_library_token},
                     ping_interval=20, ping_timeout=20,
                 ) as socket:
-                    await send(socket, {"type": "status", "message": "CADOS Connector bereit"})
+                    await send(socket, {
+                        "type": "status", "message": "CADOS Connector bereit", "version": __version__,
+                    })
                     receiver = asyncio.create_task(socket.recv())
                     last_publish = 0.0
                     self._last_tick = time.monotonic()

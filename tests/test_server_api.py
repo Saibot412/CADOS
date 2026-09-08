@@ -140,4 +140,7 @@ class ServerApiTests(unittest.TestCase):
     def test_web_and_bundled_assets_are_served(self):
         self.assertEqual(self.client.get("/").status_code,200)
         self.assertEqual(self.client.get("/static/app.js").status_code,200)
+        release = self.client.get("/static/connector-release.json")
+        self.assertEqual(release.status_code, 200)
+        self.assertEqual(release.json()["version"], "0.2.0")
         self.assertEqual(len(self.client.get("/api/v1/sync").json()["records"]),26)
