@@ -126,6 +126,17 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/v1/auth/password",json={"email":"", "password":"different-password-456"}).status_code,200)
         self.assertEqual(self.client.get("/api/v1/auth/me").status_code,401)
 
+    def test_live_connector_routes_telemetry_and_commands_to_the_same_account(self):
+        token = self.login()["token"]
+        with self.client.websocket_connect("/api/v1/live/browser") as browser:
+            self.assertEqual(browser.receive_json(), {"type": "connector", "connected": False})
+            with self.client.websocket_connect("/api/v1/live/connector", headers={"Authorization": "Bearer " + token}) as connector:
+                self.assertEqual(browser.receive_json(), {"type": "connector", "connected": True})
+                connector.send_json({"type": "telemetry", "payload": {"current_watts": 250}})
+                self.assertEqual(browser.receive_json(), {"type": "telemetry", "payload": {"current_watts": 250}})
+                browser.send_json({"type": "command", "command": {"name": "pause"}})
+                self.assertEqual(connector.receive_json(), {"name": "pause"})
+
     def test_web_and_bundled_assets_are_served(self):
         self.assertEqual(self.client.get("/").status_code,200)
         self.assertEqual(self.client.get("/static/app.js").status_code,200)

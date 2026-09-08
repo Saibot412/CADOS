@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+/usr/bin/osascript -e 'display notification "Der Connector ist bereit für cados.saibot.at." with title "CADOS Connector"' >/dev/null 2>&1 || true
+exec env CADOS_LAUNCH_MODULE=cados.connector "${PROJECT_DIR}/Cados.app/Contents/MacOS/Cados"

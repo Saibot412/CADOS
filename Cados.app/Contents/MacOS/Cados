@@ -115,4 +115,4 @@ if [ ! -f "${REQUIREMENTS_MARKER}" ] || [ "$(cat "${REQUIREMENTS_MARKER}" 2>/dev
   }
 fi
 
-exec "${VENV_DIR}/bin/python" -m cados >>"${LOG_FILE}" 2>&1
+exec "${VENV_DIR}/bin/python" -m "${CADOS_LAUNCH_MODULE:-cados}" >>"${LOG_FILE}" 2>&1

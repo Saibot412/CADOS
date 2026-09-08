@@ -6,6 +6,7 @@ import secrets
 import tempfile
 import threading
 import time
+import asyncio
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date
@@ -13,7 +14,7 @@ from pathlib import Path
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 import sqlalchemy as sa
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -51,6 +52,62 @@ class Change(BaseModel):
 class Changes(BaseModel):
     changes: list[Change] = Field(max_length=100)
 
+
+class ConnectorHub:
+    """Routes live messages only between one account's browser and connector."""
+
+    def __init__(self):
+        self.connectors: dict[str, WebSocket] = {}
+        self.browsers: dict[str, set[WebSocket]] = defaultdict(set)
+        self.lock = asyncio.Lock()
+
+    async def add_connector(self, user_id: str, socket: WebSocket) -> None:
+        async with self.lock:
+            previous = self.connectors.get(user_id)
+            self.connectors[user_id] = socket
+        if previous is not None and previous is not socket:
+            await previous.close(code=4000, reason="Durch einen neuen Connector ersetzt")
+        await self.broadcast(user_id, {"type": "connector", "connected": True})
+
+    async def remove_connector(self, user_id: str, socket: WebSocket) -> None:
+        async with self.lock:
+            if self.connectors.get(user_id) is socket:
+                self.connectors.pop(user_id, None)
+        await self.broadcast(user_id, {"type": "connector", "connected": False})
+
+    async def add_browser(self, user_id: str, socket: WebSocket) -> None:
+        async with self.lock:
+            self.browsers[user_id].add(socket)
+            connected = user_id in self.connectors
+        await socket.send_json({"type": "connector", "connected": connected})
+
+    async def remove_browser(self, user_id: str, socket: WebSocket) -> None:
+        async with self.lock:
+            self.browsers[user_id].discard(socket)
+            if not self.browsers[user_id]:
+                self.browsers.pop(user_id, None)
+
+    async def broadcast(self, user_id: str, message: dict) -> None:
+        async with self.lock:
+            browsers = list(self.browsers.get(user_id, ()))
+        for browser in browsers:
+            try:
+                await browser.send_json(message)
+            except Exception:
+                await self.remove_browser(user_id, browser)
+
+    async def command(self, user_id: str, message: dict) -> bool:
+        async with self.lock:
+            connector = self.connectors.get(user_id)
+        if connector is None:
+            return False
+        try:
+            await connector.send_json(message)
+            return True
+        except Exception:
+            await self.remove_connector(user_id, connector)
+            return False
+
 def create_app(database_url=None, public_url=None, *, bootstrap=None):
     database_url = database_url or os.environ.get("DATABASE_URL", "")
     if database_url.startswith("postgresql://"):
@@ -85,6 +142,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
 
     app = FastAPI(title="CADOS", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.engine = engine
+    hub = ConnectorHub()
 
     @app.middleware("http")
     async def protect(request, call_next):
@@ -116,6 +174,16 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         if row is None:
             raise HTTPException(401, "Bitte anmelden.")
         return dict(row)
+
+    def websocket_user(websocket: WebSocket, *, connector: bool) -> dict | None:
+        authorization = websocket.headers.get("authorization", "")
+        token = authorization[7:] if connector and authorization.startswith("Bearer ") else websocket.cookies.get("cados_session", "")
+        if not token:
+            return None
+        with engine.connect() as connection:
+            row = connection.execute(sa.select(users).join(tokens, tokens.c.user_id == users.c.id).where(
+                tokens.c.hash == token_hash(token), tokens.c.expires > time.time(), users.c.active.is_(True))).mappings().first()
+        return dict(row) if row is not None else None
 
     def public_user(user):
         return {key: user[key] for key in ("id", "email", "admin", "active")}
@@ -188,6 +256,52 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
             connection.execute(tokens.delete().where(tokens.c.hash == token_hash(token)))
         response.delete_cookie("cados_session")
         return {"ok": True}
+
+    @app.websocket("/api/v1/live/browser")
+    async def live_browser(websocket: WebSocket):
+        origin = websocket.headers.get("origin")
+        if origin and origin != public_url:
+            await websocket.close(code=1008, reason="Ungültiger Ursprung")
+            return
+        user = websocket_user(websocket, connector=False)
+        if user is None:
+            await websocket.close(code=1008, reason="Bitte anmelden")
+            return
+        await websocket.accept()
+        await hub.add_browser(user["id"], websocket)
+        try:
+            while True:
+                message = await websocket.receive_json()
+                if not isinstance(message, dict) or message.get("type") != "command":
+                    continue
+                command = message.get("command")
+                if not isinstance(command, dict) or command.get("name") not in {"connect", "start", "pause", "resume", "stop", "erg_mode"}:
+                    await websocket.send_json({"type": "error", "message": "Ungültiger Connector-Befehl"})
+                    continue
+                if not await hub.command(user["id"], command):
+                    await websocket.send_json({"type": "error", "message": "CADOS Connector ist auf diesem Konto nicht verbunden."})
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await hub.remove_browser(user["id"], websocket)
+
+    @app.websocket("/api/v1/live/connector")
+    async def live_connector(websocket: WebSocket):
+        user = websocket_user(websocket, connector=True)
+        if user is None:
+            await websocket.close(code=1008, reason="Ungültiger Connector-Zugang")
+            return
+        await websocket.accept()
+        await hub.add_connector(user["id"], websocket)
+        try:
+            while True:
+                message = await websocket.receive_json()
+                if isinstance(message, dict) and message.get("type") in {"telemetry", "status", "error", "session"}:
+                    await hub.broadcast(user["id"], message)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await hub.remove_connector(user["id"], websocket)
 
     @app.post("/api/v1/auth/password")
     def password(credentials: Credentials, user=Depends(current_user)):
