@@ -129,9 +129,7 @@ python -m unittest discover -s tests -v
 ```
 
 API-Integrationstests verwenden temporäres SQLite mit derselben SQLAlchemy-Schemadefinition.
-In GitHub Actions laufen dieselben API-Tests außerdem gegen PostgreSQL 17 in jeweils
-isolierten Testschemas; Desktop-Tests laufen auf Windows und macOS. Die Workflow-Datei
-liegt in `.github/workflows/test.yml`. Der Workflow prüft auch den Docker-Build.
+Tests werden lokal ausgeführt. Automatische GitHub-Actions-Workflows sind nicht eingerichtet.
 Containerstart und Reverse-Proxy müssen zusätzlich auf dem Zielserver geprüft werden.
 Der optional ausführbare Browser-Test verwendet ausschließlich Testdaten:
 
