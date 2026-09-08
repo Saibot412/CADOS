@@ -59,10 +59,15 @@ class ServerApiTests(unittest.TestCase):
 
     def test_anyone_can_register_with_matching_passwords(self):
         payload = {"email": "new@example.test", "password": "new-password-123",
-                   "password_confirmation": "new-password-123"}
+                   "password_confirmation": "new-password-123", "name": "Neue Person",
+                   "ftp": 245, "weight_kg": 67.5}
         self.assertEqual(self.client.post("/api/v1/auth/register", json=payload).status_code, 200)
         self.assertEqual(self.client.post("/api/v1/auth/login", json={
             "email": payload["email"], "password": payload["password"]}).status_code, 200)
+        profiles = [r["payload"] for r in self.client.get("/api/v1/sync").json()["records"] if r["kind"] == "profile"]
+        self.assertEqual(profiles, [{"id": profiles[0]["id"], "name": "Neue Person", "ftp": 245,
+                                    "weight_kg": 67.5, "max_hr": None,
+                                    "created_at": profiles[0]["created_at"], "updated_at": profiles[0]["updated_at"]}])
         self.assertEqual(self.client.post("/api/v1/auth/register", json={
             **payload, "password_confirmation": "different-password-456"}).status_code, 422)
         self.assertEqual(self.client.post("/api/v1/auth/register", json=payload).status_code, 409)

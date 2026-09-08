@@ -32,6 +32,9 @@ class Credentials(BaseModel):
 
 class Registration(Credentials):
     password_confirmation: str = Field(max_length=256)
+    name: str = Field(min_length=1, max_length=200)
+    ftp: int = Field(ge=30, le=2000)
+    weight_kg: float = Field(ge=10, le=500)
 
 class Change(BaseModel):
     id: str
@@ -113,15 +116,20 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     def public_user(user):
         return {key: user[key] for key in ("id", "email", "admin")}
 
-    def create_user(credentials: Credentials):
+    def create_user(credentials: Credentials, profile=None):
         email = credentials.email.strip().casefold()
         if "@" not in email:
             raise HTTPException(422, "Ungültige E-Mail-Adresse")
         try:
             encoded = hash_password(credentials.password)
+            user_id = str(uuid4())
             with engine.begin() as connection:
                 connection.execute(users.insert().values(
-                    id=str(uuid4()), email=email, password=encoded, admin=False))
+                    id=user_id, email=email, password=encoded, admin=False))
+                if profile is not None:
+                    connection.execute(records.insert().values(id=profile["id"], owner=user_id, kind="profile",
+                        revision=1, deleted=False, payload=profile))
+            return user_id
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except IntegrityError as exc:
@@ -131,7 +139,11 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     def register(registration: Registration):
         if registration.password != registration.password_confirmation:
             raise HTTPException(422, "Die Passwörter stimmen nicht überein.")
-        create_user(registration)
+        profile = UserProfile(id=str(uuid4()), name=registration.name.strip(), ftp=registration.ftp,
+                              weight_kg=registration.weight_kg).to_dict()
+        if not profile["name"]:
+            raise HTTPException(422, "Der Benutzername darf nicht leer sein.")
+        create_user(registration, profile)
         return {"ok": True}
 
     @app.post("/api/v1/auth/login")
