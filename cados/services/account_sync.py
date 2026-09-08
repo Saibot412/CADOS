@@ -115,6 +115,11 @@ class AccountSync:
                         revision=excluded.revision''',
                         (identifier, source, clean["name"], encode(clean), workout_hash({"id": identifier, "payload": clean}), record["revision"]))
                 local_payload = {**clean, "source_name": source}
+        elif kind == "plan":
+            if deleted:
+                self.store.delete_plan(identifier)
+            else:
+                self.store.save_plan(identifier, payload)
         elif kind == "settings" and not deleted:
             self.config.save_settings(payload)
             # Applied to Qt timers on the UI thread after synchronization.

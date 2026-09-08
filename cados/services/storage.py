@@ -58,6 +58,10 @@ class DataStore:
                     origin TEXT NOT NULL DEFAULT 'import',
                     revision INTEGER NOT NULL DEFAULT 1
                 );
+                CREATE TABLE IF NOT EXISTS planned_workouts (
+                    id TEXT PRIMARY KEY, date TEXT NOT NULL, payload TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS planned_workouts_date ON planned_workouts(date);
                 CREATE TABLE IF NOT EXISTS migrations (
                     name TEXT PRIMARY KEY, details TEXT NOT NULL
                 );
@@ -128,6 +132,35 @@ class DataStore:
                     )]
                 result.append(WorkoutSessionRecord.from_dict(payload))
         return result
+
+    def save_plan(self, identifier: str, payload: dict[str, Any]) -> None:
+        with self.connection() as connection:
+            connection.execute("""
+                INSERT INTO planned_workouts(id, date, payload) VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET date=excluded.date, payload=excluded.payload
+            """, (identifier, str(payload["date"]), encode(payload)))
+
+    def delete_plan(self, identifier: str) -> None:
+        with self.connection() as connection:
+            connection.execute("DELETE FROM planned_workouts WHERE id=?", (identifier,))
+
+    def list_plans(self, day: str | None = None) -> list[dict[str, Any]]:
+        sql, parameters = "SELECT id, payload FROM planned_workouts", ()
+        if day is not None:
+            sql += " WHERE date=?"
+            parameters = (day,)
+        sql += " ORDER BY date, id"
+        with self.connection() as connection:
+            return [{"id": str(row["id"]), **json.loads(row["payload"])}
+                    for row in connection.execute(sql, parameters)]
+
+    def get_workout(self, identifier: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT id, source_name, payload FROM workouts WHERE id=?", (identifier,)).fetchone()
+        if row is None:
+            return None
+        return {"id": str(row["id"]), "source_name": str(row["source_name"]),
+                "payload": json.loads(row["payload"])}
 
     def migration_done(self, name: str) -> bool:
         with self.connection() as connection:

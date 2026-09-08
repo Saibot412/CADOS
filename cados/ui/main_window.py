@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
@@ -110,6 +111,7 @@ class MainWindow(MainWindowView):
         self._shutting_down = False
         self._next_session_save_attempt = 0.0
         self._library_request_in_progress = False
+        self._suggested_plan_ids: set[str] = set()
 
         self.setWindowTitle("Cados")
         self._fit_to_screen()
@@ -141,6 +143,8 @@ class MainWindow(MainWindowView):
         self._apply_training_snapshot(self.engine.snapshot())
         if self.workout_library.enabled:
             QTimer.singleShot(500, self._sync_workouts)
+        elif self.config.known_accounts:
+            QTimer.singleShot(0, self._show_account_start)
         self.account_timer = QTimer(self)
         self.account_timer.timeout.connect(self._auto_sync_account)
         self.account_timer.start(60000)
@@ -325,6 +329,18 @@ class MainWindow(MainWindowView):
             return
         self._start_library_worker("login", dialog.values())
 
+    def _show_account_start(self) -> None:
+        if self.workout_library.enabled or self._library_request_in_progress:
+            return
+        from cados.ui.dialogs import AccountLoginDialog, AccountStartDialog
+        chooser = AccountStartDialog(self.config.known_accounts, self)
+        if not chooser.exec():
+            return
+        account = chooser.selected_account()
+        dialog = AccountLoginDialog(account["url"], self, email=account["email"])
+        if dialog.exec():
+            self._start_library_worker("login", dialog.values())
+
     def _import_workout(self) -> None:
         file_name, _ = QFileDialog.getOpenFileName(
             self,
@@ -400,6 +416,9 @@ class MainWindow(MainWindowView):
                 user = client.login(email, password)
                 AccountSync(self.store, client, self.config).bind(user)
                 result["client"] = client
+                result["account_email"] = email
+            else:
+                result["account_email"] = client._request("/api/v1/auth/me")["email"]
             result["count"], result["conflicts"] = AccountSync(self.store, client, self.config).run()
             result["ok"] = True
         except Exception as exc:
@@ -429,9 +448,11 @@ class MainWindow(MainWindowView):
                 self.config.workout_library_token = self.workout_library.token
                 self.config.save_settings({"workout_library_url": self.workout_library.base_url,
                     "workout_library_token": self.workout_library.token})
+            self.config.remember_account(self.workout_library.base_url, str(result.get("account_email") or ""))
             self._reload_profiles()
             self.library_settings_button.setText("Konto")
             self._reload_workouts()
+            self._suggest_today_plan()
             updated_config = AppConfig.load(data_dir=self.config.paths.data_dir)
             self.config.default_ftp = updated_config.default_ftp
             self.config.tick_interval_ms = updated_config.tick_interval_ms
@@ -448,6 +469,26 @@ class MainWindow(MainWindowView):
                 "Workout-Bibliothek",
                 str(result.get("error") or "Unbekannter Fehler"),
             )
+
+    def _suggest_today_plan(self) -> None:
+        """Select today's first planned workout after its server sync; never start it automatically."""
+        for plan in self.store.list_plans(date.today().isoformat()):
+            if plan["id"] in self._suggested_plan_ids:
+                continue
+            self._suggested_plan_ids.add(plan["id"])
+            workout = self.store.get_workout(str(plan.get("workout_id", "")))
+            if workout is None:
+                self.statusBar().showMessage(
+                    f"Für heute geplant: {plan.get('workout_name', 'Workout')} · Workout wird noch synchronisiert",
+                    10000,
+                )
+                continue
+            self._select_workout(workout["source_name"])
+            self.statusBar().showMessage(
+                f"Für heute geplant: {plan['workout_name']} · als Vorschlag ausgewählt",
+                10000,
+            )
+            return
 
     def _reload_workouts(self) -> None:
         selected_key = None

@@ -76,6 +76,13 @@ class AccountSyncTests(unittest.TestCase):
         AccountSync(fresh,Adapter(self.client),self.config).run()
         self.assertEqual(fresh.list_sessions()[0].to_dict(),session.to_dict())
 
+    def test_server_plan_is_saved_locally(self):
+        plan = {"id": str(uuid4()), "kind": "plan", "revision": 1, "deleted": False,
+                "shared": False, "payload": {"workout_id": str(uuid4()), "workout_name": "Heute",
+                                                   "date": "2026-09-13"}}
+        self.sync.apply(plan)
+        self.assertEqual(self.store.list_plans("2026-09-13")[0]["workout_name"], "Heute")
+
     def test_unchanged_sync_does_not_rewrite_history(self):
         self.sync.run()
         with patch.object(self.sync,"apply") as apply:

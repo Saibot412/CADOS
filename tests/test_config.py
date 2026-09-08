@@ -31,3 +31,11 @@ class ConfigTests(unittest.TestCase):
             config = AppConfig.load(Path(directory))
             self.assertEqual(config.workout_library_url, "https://library.example")
             self.assertEqual(config.workout_library_token, "environment-token")
+
+    def test_known_account_is_kept_without_storing_a_password(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = AppConfig.load(Path(directory))
+            config.remember_account("https://cados.saibot.at/", "rider@example.test")
+            restored = AppConfig.load(Path(directory))
+            self.assertEqual(restored.known_accounts, [{"url": "https://cados.saibot.at", "email": "rider@example.test"}])
+            self.assertNotIn("password", restored.paths.settings_path.read_text())

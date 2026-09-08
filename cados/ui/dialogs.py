@@ -5,6 +5,7 @@ from PySide6.QtGui import QIntValidator, QDoubleValidator
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -101,7 +102,7 @@ class ProfileDialog(QDialog):
 
 
 class AccountLoginDialog(QDialog):
-    def __init__(self, url, parent=None):
+    def __init__(self, url, parent=None, *, email=""):
         super().__init__(parent)
         self.setWindowTitle("Bei CADOS anmelden")
         self.setMinimumWidth(430)
@@ -110,8 +111,8 @@ class AccountLoginDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
         form = QFormLayout()
-        self.url = QLineEdit(url or "https://www.cados.saibot.at")
-        self.email = QLineEdit()
+        self.url = QLineEdit(url or "https://cados.saibot.at")
+        self.email = QLineEdit(email)
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.Password)
         form.addRow("Server", self.url)
@@ -126,6 +127,34 @@ class AccountLoginDialog(QDialog):
 
     def values(self):
         return self.url.text().strip().rstrip("/"), self.email.text().strip(), self.password.text()
+
+
+class AccountStartDialog(QDialog):
+    """Select a previously used account before asking for its password again."""
+
+    def __init__(self, accounts: list[dict[str, str]], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("CADOS starten")
+        self.setMinimumWidth(430)
+        layout = QVBoxLayout(self)
+        info = QLabel("Mit welchem Konto möchtest du CADOS verwenden?")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        self.accounts = accounts
+        self.account = QComboBox()
+        for item in accounts:
+            self.account.addItem(item["email"], item)
+        self.account.addItem("Anderes Konto", None)
+        layout.addWidget(self.account)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Weiter zur Anmeldung")
+        buttons.button(QDialogButtonBox.Cancel).setText("Ohne Konto starten")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def selected_account(self) -> dict[str, str]:
+        return self.account.currentData() or {"url": "https://cados.saibot.at", "email": ""}
 
 
 class FTPResultDialog(QDialog):

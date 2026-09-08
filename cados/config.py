@@ -14,6 +14,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "theme_mode": "light",
     "workout_library_url": "",
     "workout_library_token": "",
+    "known_accounts": [],
 }
 
 
@@ -80,6 +81,7 @@ class AppConfig:
     theme_mode: str
     workout_library_url: str
     workout_library_token: str
+    known_accounts: list[dict[str, str]]
 
     @classmethod
     def load(cls, root: Path | None = None, *, data_dir: Path | None = None) -> "AppConfig":
@@ -90,6 +92,13 @@ class AppConfig:
         if not isinstance(payload, dict):
             raise ValueError("Ungültiges Format der Einstellungen.")
         settings.update(payload)
+        known_accounts = []
+        for account in settings["known_accounts"] if isinstance(settings["known_accounts"], list) else []:
+            if not isinstance(account, dict):
+                continue
+            email, url = str(account.get("email", "")).strip(), str(account.get("url", "")).strip().rstrip("/")
+            if email and url:
+                known_accounts.append({"email": email, "url": url})
         return cls(
             paths=paths,
             tick_interval_ms=min(1000, max(100, int(settings["tick_interval_ms"]))),
@@ -102,6 +111,7 @@ class AppConfig:
             workout_library_token=str(
                 os.getenv("CADOS_LIBRARY_TOKEN") or settings["workout_library_token"]
             ).strip(),
+            known_accounts=known_accounts,
         )
 
     def save_settings(self, updates: dict[str, Any]) -> None:
@@ -118,3 +128,12 @@ class AppConfig:
         del theme_mode
         self.theme_mode = "light"
         self.save_settings({"theme_mode": "light"})
+
+    def remember_account(self, url: str, email: str) -> None:
+        account = {"url": url.strip().rstrip("/"), "email": email.strip()}
+        if not all(account.values()):
+            return
+        self.known_accounts = [item for item in self.known_accounts if item != account]
+        self.known_accounts.insert(0, account)
+        self.known_accounts = self.known_accounts[:10]
+        self.save_settings({"known_accounts": self.known_accounts})

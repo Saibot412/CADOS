@@ -45,6 +45,13 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM session_samples").fetchone()[0], 1)
         self.assertEqual(self.store.list_sessions(include_samples=False)[0].samples, [])
 
+    def test_planned_workouts_round_trip_and_can_be_removed(self):
+        payload = {"workout_id": "workout-1", "workout_name": "Intervalle", "date": "2026-09-13"}
+        self.store.save_plan("plan-1", payload)
+        self.assertEqual(self.store.list_plans("2026-09-13"), [{"id": "plan-1", **payload}])
+        self.store.delete_plan("plan-1")
+        self.assertEqual(self.store.list_plans(), [])
+
     def test_legacy_json_migration_is_atomic_and_runs_once(self):
         profiles = self.root / "profiles.json"
         sessions = self.root / "sessions.json"
