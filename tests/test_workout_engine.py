@@ -125,6 +125,49 @@ class WorkoutEngineTests(unittest.TestCase):
         self.engine.resume()
         self.assertEqual(self.engine.tick(0.25).state, "running")
 
+    def test_adaptive_erg_relaxes_after_sustained_low_cadence_and_recovers(self):
+        self.engine.set_adaptive_erg(True)
+        workout = WorkoutTemplate(
+            name="Adaptive", description="", author="Cados", ftp_reference=None,
+            blocks=(WorkoutTemplateBlock(kind="steady", label="Steady", duration_sec=60,
+                                         target_watts=300, target_cadence=90),),
+            source_path=Path("adaptive.json"),
+        )
+        self.engine.load_workout(workout)
+        self.engine.start()
+        self.engine.tick(0.25)
+        self.engine.tick(5)
+        target = self.engine.snapshot().target_watts
+        self.trainer.telemetry.cadence = 70
+        for _ in range(12):
+            snapshot = self.engine.tick(0.5)
+        self.assertTrue(snapshot.adaptive_erg)
+        self.assertGreater(snapshot.adaptive_relief_watts, 0)
+        self.assertLess(snapshot.trainer_target_watts, target)
+        self.assertGreaterEqual(snapshot.trainer_target_watts, round(target * 0.9))
+        self.trainer.telemetry.cadence = 100
+        for _ in range(20):
+            snapshot = self.engine.tick(0.5)
+        self.assertEqual(snapshot.adaptive_relief_watts, 0)
+        self.assertEqual(snapshot.trainer_target_watts, snapshot.target_watts)
+
+    def test_normal_erg_keeps_the_exact_target_when_cadence_is_low(self):
+        self._start_riding()
+        self.trainer.telemetry.cadence = 60
+        for _ in range(12):
+            snapshot = self.engine.tick(0.5)
+        self.assertFalse(snapshot.adaptive_erg)
+        self.assertEqual(snapshot.trainer_target_watts, snapshot.target_watts)
+
+    def test_erg_mode_can_be_switched_during_a_workout(self):
+        self._start_riding()
+        self.engine.set_adaptive_erg(True)
+        self.assertTrue(self.engine.snapshot().adaptive_erg)
+        self.engine.set_adaptive_erg(False)
+        snapshot = self.engine.snapshot()
+        self.assertFalse(snapshot.adaptive_erg)
+        self.assertEqual(snapshot.trainer_target_watts, snapshot.target_watts)
+
     def test_disconnect_and_reconnect_do_not_count_missing_time(self):
         self._start_riding()
         self.engine.tick(1)

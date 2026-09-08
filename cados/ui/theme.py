@@ -316,6 +316,16 @@ QPushButton[compact="true"] {
     padding: 7px 12px;
     min-height: 14px;
 }
+QPushButton[modeToggle="true"] {
+    color: #536b83;
+    background: #f6f8fb;
+    border-color: #dfe6ee;
+}
+QPushButton[modeToggle="true"]:checked {
+    color: #ffffff;
+    background: #1677d2;
+    border-color: #1677d2;
+}
 QPushButton[accountCard="true"] {
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid #d6e1ed;

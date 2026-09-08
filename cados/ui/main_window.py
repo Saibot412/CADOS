@@ -229,6 +229,10 @@ class MainWindow(MainWindowView):
         self.library_settings_button.clicked.connect(self._configure_workout_library)
         self.workout_list.currentItemChanged.connect(lambda current, _: self._display_selected_workout(current))
         self.start_workout_button.clicked.connect(self._start_selected_workout)
+        self.normal_erg_button.clicked.connect(lambda: self._select_erg_mode(False))
+        self.adaptive_erg_button.clicked.connect(lambda: self._select_erg_mode(True))
+        self.training_normal_erg_button.clicked.connect(lambda: self._select_erg_mode(False))
+        self.training_adaptive_erg_button.clicked.connect(lambda: self._select_erg_mode(True))
         self.prev_block_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.previous_block()))
         self.skip_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.skip_block()))
         self.plus_button.clicked.connect(lambda: self._apply_training_snapshot(self.engine.adjust_target(5)))
@@ -725,6 +729,7 @@ class MainWindow(MainWindowView):
         if not self._persist_pending_session(force=True):
             return
         self.engine.set_profile(self.current_profile)
+        self._select_erg_mode(self.adaptive_erg_button.isChecked())
         self.engine.load_workout(self.current_workout_template, ftp_watts=self._active_ftp_watts())
         self.current_workout = self.engine.workout
         snapshot = self.engine.start()
@@ -733,6 +738,15 @@ class MainWindow(MainWindowView):
         self._show_training_header(True)
         self.training_timeline.set_workout(self.current_workout, self.current_workout.ftp_watts if self.current_workout else None)
         self._apply_training_snapshot(snapshot)
+
+    def _select_erg_mode(self, adaptive: bool) -> None:
+        self.normal_erg_button.setChecked(not adaptive)
+        self.adaptive_erg_button.setChecked(adaptive)
+        self.training_normal_erg_button.setChecked(not adaptive)
+        self.training_adaptive_erg_button.setChecked(adaptive)
+        if self.engine.workout is not None:
+            snapshot = self.engine.set_adaptive_erg(adaptive)
+            self._apply_training_snapshot(snapshot)
 
     def _show_training_header(self, visible: bool) -> None:
         self.training_state_pill.setVisible(visible)
@@ -761,6 +775,12 @@ class MainWindow(MainWindowView):
         self.target_watts_value.setText(f"{snapshot.target_watts} W")
         self.target_watts_value.setStyleSheet(f"font-size: 36px; font-weight: 700; color: {target_zone.color};")
         target_detail = snapshot.target_pct_label or ""
+        if snapshot.adaptive_erg:
+            target_detail = "Adaptiver ERG"
+            if snapshot.adaptive_relief_watts:
+                target_detail += f" · Entlastung −{snapshot.adaptive_relief_watts} W"
+            if snapshot.target_pct_label:
+                target_detail += f" ({snapshot.target_pct_label})"
         if snapshot.ramping:
             target_detail = "Rampe\u2026" + (f" ({target_detail})" if target_detail else "")
         self.target_pct_detail_label.setText(target_detail)
@@ -842,6 +862,11 @@ class MainWindow(MainWindowView):
 
     def _update_training_controls(self, snapshot: TrainingSnapshot) -> None:
         self.start_workout_button.setEnabled(self.current_workout_template is not None and self.trainer.ready_for_workout())
+        mode_selectable = snapshot.state not in {"running", "paused", "waiting_for_pedal"}
+        self.normal_erg_button.setEnabled(mode_selectable)
+        self.adaptive_erg_button.setEnabled(mode_selectable)
+        self.training_normal_erg_button.setEnabled(not mode_selectable)
+        self.training_adaptive_erg_button.setEnabled(not mode_selectable)
         active = snapshot.state in {"running", "paused", "waiting_for_pedal"}
         self.skip_button.setEnabled(active)
         self.plus_button.setEnabled(active)

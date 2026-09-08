@@ -42,6 +42,9 @@ class TrainingSnapshot:
     intensity_factor: float = 0.0
     tss: float = 0.0
     calories: int = 0
+    trainer_target_watts: int = 0
+    adaptive_erg: bool = False
+    adaptive_relief_watts: int = 0
 
 
 class WorkoutEngine:
@@ -50,6 +53,11 @@ class WorkoutEngine:
     ZERO_WATTS_PAUSE_DELAY_SEC = 2.0
     BLOCK_TRANSITION_SEC = 3.0
     MAX_TICK_GAP_SEC = 5.0
+    ADAPTIVE_ERG_DEADBAND_RPM = 3
+    ADAPTIVE_ERG_TRIGGER_SEC = 2.0
+    ADAPTIVE_ERG_MAX_RELIEF_RATIO = 0.10
+    ADAPTIVE_ERG_RELIEF_RATE_WATTS_PER_SEC = 5.0
+    ADAPTIVE_ERG_RECOVERY_RATE_WATTS_PER_SEC = 4.0
 
     def __init__(self, trainer: TrainerController, hr_monitor: HRMonitorService | None = None):
         self.trainer = trainer
@@ -70,6 +78,9 @@ class WorkoutEngine:
         self._last_target_watts: int = 0
         self._block_transition_from_watts: int | None = None
         self._block_transition_elapsed: float = 0.0
+        self.adaptive_erg = False
+        self._adaptive_low_cadence_sec = 0.0
+        self._adaptive_relief_watts = 0.0
         self._reset_metrics()
 
     def _reset_metrics(self) -> None:
@@ -77,6 +88,15 @@ class WorkoutEngine:
 
     def set_profile(self, profile: UserProfile | None) -> None:
         self.profile = profile
+
+    def set_adaptive_erg(self, enabled: bool) -> TrainingSnapshot:
+        """Switch ERG controllers safely, including while a workout is running."""
+        self.adaptive_erg = bool(enabled)
+        self._adaptive_low_cadence_sec = 0.0
+        self._adaptive_relief_watts = 0.0
+        if self.workout is None:
+            return self.snapshot()
+        return self._apply_control()
 
     def load_workout(self, workout_template: WorkoutTemplate, ftp_watts: int | None = None) -> TrainingSnapshot:
         if self.state in {"running", "paused", "waiting_for_pedal"}:
@@ -98,6 +118,8 @@ class WorkoutEngine:
         self._last_target_watts = 0
         self._block_transition_from_watts = None
         self._block_transition_elapsed = 0.0
+        self._adaptive_low_cadence_sec = 0.0
+        self._adaptive_relief_watts = 0.0
         self._reset_metrics()
         return self.snapshot()
 
@@ -121,6 +143,8 @@ class WorkoutEngine:
         self._last_target_watts = 0
         self._block_transition_from_watts = None
         self._block_transition_elapsed = 0.0
+        self._adaptive_low_cadence_sec = 0.0
+        self._adaptive_relief_watts = 0.0
         self._reset_metrics()
         self.trainer.start_session()
         return self.snapshot()
@@ -217,6 +241,7 @@ class WorkoutEngine:
                              hr if hr_connected else None, self.elapsed_sec, self._target_watts())
             self.elapsed_sec += dt
             self._update_target_state(dt)
+            self._update_adaptive_erg(probe.cadence, dt)
             if self.elapsed_sec >= self.workout.total_duration_sec:
                 return self._complete_workout()
             if self._zero_watts_sec >= self.ZERO_WATTS_PAUSE_DELAY_SEC:
@@ -250,6 +275,8 @@ class WorkoutEngine:
         if self.state == "running" and self._last_block_index >= 0 and index != self._last_block_index:
             self._block_transition_from_watts = self._last_target_watts
             self._block_transition_elapsed = 0.0
+            self._adaptive_low_cadence_sec = 0.0
+            self._adaptive_relief_watts = 0.0
         self._last_block_index = index
         self._last_target_watts = self._target_watts()
 
@@ -266,10 +293,48 @@ class WorkoutEngine:
             target = round(self.RAMP_START_WATTS + (target - self.RAMP_START_WATTS) * progress)
         return target
 
+    def _update_adaptive_erg(self, cadence: int, dt: float) -> None:
+        """Relieve ERG resistance gradually when cadence stays below its target."""
+        if not self.adaptive_erg or self.workout is None or self.state != "running":
+            self._adaptive_low_cadence_sec = 0.0
+            self._adaptive_relief_watts = 0.0
+            return
+        _, block, _ = self.workout.locate_block(self.elapsed_sec)
+        target_cadence = block.target_cadence
+        target_watts = self._target_watts()
+        if not target_cadence or cadence <= 0 or target_watts <= 0:
+            self._adaptive_low_cadence_sec = 0.0
+            self._adaptive_relief_watts = max(
+                0.0, self._adaptive_relief_watts - self.ADAPTIVE_ERG_RECOVERY_RATE_WATTS_PER_SEC * dt
+            )
+            return
+
+        deficit = target_cadence - cadence - self.ADAPTIVE_ERG_DEADBAND_RPM
+        if deficit > 0:
+            self._adaptive_low_cadence_sec += dt
+            maximum = target_watts * self.ADAPTIVE_ERG_MAX_RELIEF_RATIO
+            desired = maximum * min(1.0, deficit / 12.0)
+            if self._adaptive_low_cadence_sec >= self.ADAPTIVE_ERG_TRIGGER_SEC:
+                self._adaptive_relief_watts = min(
+                    desired, self._adaptive_relief_watts + self.ADAPTIVE_ERG_RELIEF_RATE_WATTS_PER_SEC * dt
+                )
+            return
+
+        self._adaptive_low_cadence_sec = 0.0
+        self._adaptive_relief_watts = max(
+            0.0, self._adaptive_relief_watts - self.ADAPTIVE_ERG_RECOVERY_RATE_WATTS_PER_SEC * dt
+        )
+
+    def _trainer_target_watts(self) -> int:
+        target = self._target_watts()
+        if self.adaptive_erg:
+            target -= round(self._adaptive_relief_watts)
+        return max(0, target)
+
     def _apply_control(self) -> TrainingSnapshot:
         snapshot = self.snapshot()
         self.trainer.update(
-            snapshot.target_watts, snapshot.target_cadence, 0.0, self.state == "running")
+            snapshot.trainer_target_watts, snapshot.target_cadence, 0.0, self.state == "running")
         return snapshot
 
     def _read_hr(self) -> tuple[int, bool]:
@@ -304,6 +369,7 @@ class WorkoutEngine:
 
         index, block, _ = self.workout.locate_block(self.elapsed_sec)
         target_watts = self._target_watts()
+        trainer_target_watts = self._trainer_target_watts()
         target_cadence = block.target_cadence
         trainer_snapshot = self.trainer.read_snapshot()
         zone = power_zone_for_watts(target_watts, self.workout.ftp_watts)
@@ -331,6 +397,9 @@ class WorkoutEngine:
             hr_connected=hr_connected,
             auto_paused=self._auto_paused,
             ramping=self._ramping,
+            trainer_target_watts=trainer_target_watts,
+            adaptive_erg=self.adaptive_erg,
+            adaptive_relief_watts=round(self._adaptive_relief_watts),
             **self.metrics.summary(self.workout.ftp_watts),
         )
 
