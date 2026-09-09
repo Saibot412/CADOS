@@ -6,4 +6,6 @@ logs
 **/.env
 **/.env.*
 tests
-Cados.app
+build
+dist
+release

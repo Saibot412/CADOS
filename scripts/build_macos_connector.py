@@ -1,8 +1,8 @@
 """Build the installable CADOS Connector DMG on macOS.
 
 Run on a Mac with the project virtual environment active.  The resulting DMG
-is intentionally kept out of Git and can be copied to the server's static
-downloads directory after it has been code-signed and notarized.
+is kept out of Git and uploaded as an asset to the matching GitHub release.
+The web release manifest points users to that download.
 """
 from __future__ import annotations
 

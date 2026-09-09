@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QL
 
 from cados.config import AppConfig
 from cados.connector import ConnectorService
+from cados.connector_login import ConnectorLogin
 from cados.logging_utils import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -160,8 +161,12 @@ def run() -> int:
     app = ConnectorApplication(sys.argv)
     app.setApplicationName("CADOS Connector")
     app.setQuitOnLastWindowClosed(False)
+    if "--login" in sys.argv or not (config.workout_library_url and config.workout_library_token):
+        if not ConnectorLogin(config).exec():
+            return 0
     bridge = StatusBridge()
     service: ConnectorService | None = None
+    change_login = False
 
     def quit_connector() -> None:
         if service is not None:
@@ -183,6 +188,17 @@ def run() -> int:
     show_action = QAction("Fenster anzeigen", menu)
     show_action.triggered.connect(window.showNormal)
     menu.addAction(show_action)
+    login_action = QAction("Anmeldung ändern …", menu)
+    def request_login():
+        nonlocal change_login
+        if service.engine.state in {"running", "paused", "waiting_for_pedal"}:
+            window.showNormal()
+            window.connection.setText("Bitte zuerst das Training beenden, um die Anmeldung zu ändern.")
+            return
+        change_login = True
+        quit_connector()
+    login_action.triggered.connect(request_login)
+    menu.addAction(login_action)
     menu.addSeparator()
     quit_action = QAction("Connector beenden", menu)
     quit_action.triggered.connect(quit_connector)
@@ -207,4 +223,8 @@ def run() -> int:
     exit_code = app.exec()
     service.close()
     thread.join(timeout=5)
+    if change_login and not thread.is_alive():
+        import subprocess
+        command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, "-m", "cados"]
+        subprocess.Popen([*command, "--login"])
     return exit_code

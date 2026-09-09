@@ -1,3 +1,11 @@
+## Projektbereinigung – Web und Connector
+
+- Alte vollständige Desktop-Oberfläche, Projekt-App-Starter und zugehörige UI-Tests entfernt.
+- Alle aktiven App-Einstiegspunkte starten den Connector.
+- Eigene Connector-Anmeldung für neue Installationen und erneute Anmeldung über die Menüleiste.
+- Kontospezifische lokale Datenbanken auch im Connector berücksichtigt.
+- Dokumentation auf Web-App und Connector umgestellt.
+
 # CADOS 0.3.1
 
 - FTP-Rampentest bis 200 % der bisherigen FTP: bei 300 W FTP sind bis zu 600 W Sollleistung vorgesehen.

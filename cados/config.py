@@ -9,10 +9,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "tick_interval_ms": 250,
     "trainer_scan_timeout_sec": 5,
-    "default_ftp": 250,
-    "theme_mode": "light",
     "workout_library_url": "",
     "workout_library_token": "",
     "known_accounts": [],
@@ -43,7 +40,6 @@ class AppPaths:
     settings_path: Path
     database_path: Path
     app_icon_path: Path
-    logo_path: Path
 
     @classmethod
     def for_root(cls, root: Path | None = None, *, data_dir: Path | None = None) -> "AppPaths":
@@ -57,7 +53,7 @@ class AppPaths:
             legacy_profiles_path=project_root / "data" / "profiles.json",
             legacy_sessions_path=project_root / "data" / "sessions.json",
             data_dir=runtime, logs_dir=runtime / "logs", settings_path=runtime / "settings.json",
-            database_path=runtime / "cados.sqlite3", app_icon_path=assets / "icon.png", logo_path=assets / "logo.png",
+            database_path=runtime / "cados.sqlite3", app_icon_path=assets / "icon.png",
         )
 
     def ensure_runtime_files(self) -> None:
@@ -76,10 +72,7 @@ class AppPaths:
 @dataclass(slots=True)
 class AppConfig:
     paths: AppPaths
-    tick_interval_ms: int
     trainer_scan_timeout_sec: int
-    default_ftp: int
-    theme_mode: str
     workout_library_url: str
     workout_library_token: str
     known_accounts: list[dict[str, str]]
@@ -115,10 +108,7 @@ class AppConfig:
                     break
         return cls(
             paths=paths,
-            tick_interval_ms=min(1000, max(100, int(settings["tick_interval_ms"]))),
             trainer_scan_timeout_sec=max(1, int(settings["trainer_scan_timeout_sec"])),
-            default_ftp=max(100, int(settings["default_ftp"])),
-            theme_mode="light",
             workout_library_url=current_url,
             workout_library_token=current_token,
             known_accounts=known_accounts,
@@ -133,11 +123,6 @@ class AppConfig:
         if os.name != "nt":
             temporary.chmod(0o600)
         temporary.replace(self.paths.settings_path)
-
-    def save_theme_mode(self, theme_mode: str) -> None:
-        del theme_mode
-        self.theme_mode = "light"
-        self.save_settings({"theme_mode": "light"})
 
     @property
     def active_accounts(self) -> list[dict[str, str]]:

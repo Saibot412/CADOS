@@ -1,80 +1,83 @@
-# Cados - Indoor-Cycling Trainer
+# CADOS – Web-App und Connector
 
-## Überblick
+CADOS besteht aus der Web-Oberfläche unter https://cados.saibot.at und dem lokalen
+Connector. Der Browser verwaltet Konto, Workouts, Kalender und Trainingsanzeige.
+Der Connector übernimmt Bluetooth, ERG-Steuerung und die lokale Aufzeichnung.
+Die frühere vollständige Desktop-App wurde entfernt.
 
-Cados ist eine Desktop-Anwendung für strukturiertes Indoor-Cycling mit direkter Trainersteuerung über Bluetooth (FTMS). Die App steuert einen Wahoo KICKR (oder kompatiblen Smart Trainer), zeigt Live-Daten an und führt durch vorgegebene Workout-Pläne.
+## Installation und Anmeldung
 
-## Systemvoraussetzungen
+Den Connector auf der CADOS-Webseite herunterladen, das DMG öffnen und
+**CADOS Connector.app** nach **Programme** ziehen. Die installierbare App enthält
+Python und alle Abhängigkeiten. Den Connector starten und Bluetooth erlauben.
+Bei der ersten Verwendung mit demselben Konto wie im Browser anmelden.
+Bestehende gespeicherte Anmeldungen werden übernommen; Passwörter werden nicht gespeichert.
+Über das Connector-Menü in der Menüleiste lässt sich **Anmeldung ändern …** wählen,
+sobald kein Training läuft. Neue Konten werden auf der Webseite registriert.
 
-- macOS oder Windows 10/11 mit Bluetooth
-- Python 3.11+
-- Wahoo KICKR oder kompatibler FTMS-Trainer
+## Training und Speicherung
 
-## Installation
+Workouts im Browser auswählen, Trainer verbinden und das Training starten.
+Normales und adaptives ERG sind verfügbar; FTP-Rampentests verwenden normales ERG.
+Während eines Internetausfalls läuft ein bereits gestartetes Training lokal weiter.
+Pause, Fortsetzen und Beenden sind dann auch im Connector-Fenster erreichbar.
+Für Anmeldung und den Start über die Webseite ist eine Serververbindung erforderlich.
 
-Auf macOS wird Cados per Doppelklick auf `Cados.app` gestartet. Die App richtet
-die benötigte Python-Umgebung automatisch unter
-`~/Library/Application Support/Cados/.venv` ein, damit der Projektordner klein
-bleibt. `Cados.app` ist ein Starter für diesen Projektordner und muss darin
-bleiben; es ist kein eigenständiges, verschiebbares App-Paket.
+Abgeschlossene Trainings werden lokal in SQLite gespeichert und mit dem Server
+synchronisiert. Ohne Verbindung wird der Abgleich später wiederholt.
+Unter macOS liegen Daten unter `~/Library/Application Support/Cados`, unter Windows
+unter `%LOCALAPPDATA%\Cados`. Bereits vorhandene Kontodaten bleiben erhalten;
+weitere Konten verwenden getrennte SQLite-Dateien. Der Server speichert Konten,
+Workouts und synchronisierte Trainings in PostgreSQL.
 
-Beim ersten Bluetooth-Scan fragt macOS eventuell nach Bluetooth-Rechten. Erlaube
-dann Cados bzw. Python den Zugriff unter Systemeinstellungen > Datenschutz &
-Sicherheit > Bluetooth.
-
-Manuell kann Cados weiterhin so gestartet werden:
-
-```bash
-python3 -m venv ~/Library/Application\ Support/Cados/.venv
-~/Library/Application\ Support/Cados/.venv/bin/python -m pip install -e .
-~/Library/Application\ Support/Cados/.venv/bin/python -m cados
-```
+Nach zehn Minuten ohne Webseite schließt sich der Connector automatisch,
+außer während eines laufenden Trainings. Das Fenster zeigt den Countdown.
+Ein erzwungenes Prozessende kann eine noch nicht gespeicherte Session verlieren.
 
 ## Projektstruktur
 
+- `server/app/static/`: Web-Oberfläche und Trainingsdiagramme.
+- `server/app/`: API, Anmeldung, PostgreSQL und Datenbankmigrationen.
+- `cados/connector_app.py`: kleines Connector-Fenster und Menüleiste.
+- `cados/connector_login.py`: eigenständige Connector-Anmeldung.
+- `cados/connector.py`: lokale Trainingssteuerung und Serververbindung.
+- `cados/core/`, `cados/models/`, `cados/services/`: gemeinsam verwendete Logik,
+  Bluetooth, Messwerte, Speicherung und Synchronisation.
+- `cados/assets/`: App-Icon und mitgelieferte Workouts.
+- `scripts/build_macos_connector.py`: eigenständige macOS-App und DMG erstellen.
+- `tests/`: lokale automatisierte Tests.
+
+PySide6 wird weiterhin für das kleine Connector-Fenster benötigt.
+Serverinstallation und Betrieb: [server/README.md](server/README.md).
+
+## Entwicklung
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m cados
 ```
-Cados/
-├── cados/
-│   ├── __main__.py          # Einstiegspunkt für python -m cados
-│   ├── config.py            # Konfiguration & Pfade
-│   ├── core/
-│   │   ├── workout_engine.py  # Training-Logik & Zustandsmaschine
-│   │   ├── training_metrics.py # Zeitgewichtete Messwerte & Kennzahlen
-│   │   ├── workout_loader.py  # JSON-Workout-Parser
-│   │   ├── zwo_importer.py     # Zwift-ZWO-Import
-│   │   └── zones.py          # Leistungszonen (Z1-Z7)
-│   ├── models/
-│   │   ├── profile.py        # Benutzerprofil
-│   │   ├── session.py        # Session-Aufzeichnungen
-│   │   └── workout.py        # Workout-Datenmodelle
-│   ├── services/
-│   │   ├── storage.py        # Lokale SQLite-Datenbank
-│   │   ├── workout_catalog.py # Mitgelieferte, lokale und Online-Workouts
-│   │   ├── workout_library.py # HTTPS-Client der zentralen Bibliothek
-│   │   ├── trainer.py        # Bluetooth-Trainersteuerung
-│   │   ├── trainer_control.py # Befehls-Worker mit Wiederholungsversuchen
-│   │   ├── async_loop.py     # Gemeinsamer Bluetooth-Eventloop
-│   │   └── hr_monitor.py     # Herzfrequenzsensor
-│   ├── ui/
-│   │   ├── main_window.py    # UI-Abläufe & Session-Speicherung
-│   │   ├── main_window_view.py # Fensteraufbau & Layout
-│   │   ├── library_widgets.py # Workout-Liste & Formatierung
-│   │   ├── dialogs.py        # Profil-Dialog
-│   │   ├── theme.py          # QSS-Stylesheet (Light-Theme)
-│   │   └── widgets.py        # Workout-Timeline-Widget
-│   └── assets/               # Icons, Logo & mitgelieferte Workouts
-├── server/                    # Optionale zentrale Workout-Bibliothek
-└── tests/                     # Automatische Tests
+
+`python -m cados` und `cados-connector` öffnen ausschließlich den Connector.
+`cados-connector-cli` startet ihn ohne Fenster mit bereits eingerichteter Anmeldung.
+Mit `python -m cados --login` kann die Anmeldung erneut geöffnet werden.
+Die alten Projektstarter und die vollständige Desktop-Oberfläche gibt es nicht mehr.
+
+```bash
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
+.venv/bin/python scripts/build_macos_connector.py
 ```
+
+Der macOS-Build erzeugt `release/CADOS-Connector-macOS.dmg`.
+Release-Veröffentlichung und Versionshinweise sind in `server/README.md` beschrieben.
+Windows bleibt im gemeinsamen Connector-Code berücksichtigt; dieses Build-Skript
+liefert ausschließlich das macOS-Paket.
+Persönliche Daten, virtuelle Umgebungen und Build-Ausgaben gehören nicht ins Git-Repository.
 
 ## Workout-Dateien
 
-CADOS-JSON-Dateien und übliche Zwift-Workouts (`.zwo`) werden ausschließlich in der
-Web-App importiert und anschließend mit der Desktop-App synchronisiert. So bleibt die
-Workout-Verwaltung zentral und die Mac-/Windows-App auf das Training fokussiert. Unterstützt
-werden in ZWO die Bausteine `Warmup`, `Cooldown`, `Ramp`, `SteadyState` und
-`IntervalsT`. Freies Fahren und feste Watt-ZWO-Dateien werden mit einer verständlichen
-Fehlermeldung abgewiesen, weil sie nicht eindeutig in den ERG-Ablauf von CADOS passen.
+JSON und Zwift-ZWO werden im Browser importiert. Der Workout-Builder unterstützt
+konstante Blöcke und Rampen mit sofortiger Diagrammvorschau.
 
 ### JSON-Schema
 
@@ -158,169 +161,3 @@ Fehlermeldung abgewiesen, weil sie nicht eindeutig in den ERG-Ablauf von CADOS p
 Ungültige Dateien werden protokolliert und übersprungen. Zahlen müssen zum
 jeweiligen Feld passen; nicht endliche Werte, negative Ziele und nicht ganzzahlige
 Dauern werden abgewiesen.
-
-## Leistungszonen
-
-| Zone | Name | FTP-Bereich | Farbe |
-|------|------|------------|-------|
-| Z1 | Recovery | 0-55% | Grau |
-| Z2 | Endurance | 56-75% | Blau |
-| Z3 | Tempo | 76-90% | Grün |
-| Z4 | Threshold | 91-105% | Gelb |
-| Z5 | VO2 Max | 106-120% | Orange |
-| Z6 | Anaerobic | 121-150% | Rot |
-| Z7 | Neuromuscular | >150% | Lila |
-
-## Training
-
-### Automatisches Verhalten
-
-- **Pedal-to-Start**: Nach Klick auf "Workout starten" wartet Cados bis getreten wird
-- **Auto-Pause**: Fällt die Leistung für 2 Sekunden auf 0 W, pausiert das Training automatisch
-- **Verbindungsabbruch / Ruhezustand**: Bei fehlender Trainerverbindung oder einer Timerlücke über fünf Sekunden pausiert das Training. Die fehlende Zeit wird nicht als gefahrene Zeit erfasst.
-- **Auto-Resume**: Sobald wieder getreten wird, setzt sich das Training fort
-- **5-Sekunden-Rampe**: Bei jedem Start/Resume werden die Ziel-Watt über 5 Sekunden von 30 W auf den Sollwert gerampt
-
-### Anzeige im Training
-
-- **Ist-Watt / Soll-Watt**: Eingefärbt nach aktueller Leistungszone
-- **Ist-Kadenz**: Grün wenn innerhalb ±5 RPM der Soll-Kadenz, sonst rot
-- **±5 W Buttons**: Im Soll-Watt-Feld zum Anpassen der Zielleistung
-- **Zeit**: Tatsächlich gefahrene Zeit und verbleibende Workout-Zeit werden getrennt angezeigt. Vor- und Zurückspringen verändert nur die Workout-Position.
-- **Timeline**: Grafische Darstellung des Workout-Verlaufs mit aktueller Position
-- **Status-Anzeige**: In der Kopfleiste (Warte auf Tritt / Aktiv / Pausiert)
-
-### Steuerung
-
-| Aktion | Beschreibung |
-|--------|-------------|
-| +5 W / -5 W | Zielleistung anpassen (Bias) |
-| Nächster Block | Zum nächsten Workout-Block springen |
-| Beenden | Training stoppen und zur Startseite |
-
-## Benutzerprofile
-
-Jeder Benutzer hat einen Namen und einen FTP-Wert. Der FTP-Wert wird zur Berechnung der Zielleistung aus den prozentualen Angaben in den Workouts verwendet.
-
-## Einstellungen
-
-Die Einstellungsdatei im lokalen CADOS-Datenordner enthält:
-
-```json
-{
-  "tick_interval_ms": 250,
-  "trainer_scan_timeout_sec": 5,
-  "default_ftp": 250,
-  "theme_mode": "light",
-  "workout_library_url": "",
-  "workout_library_token": ""
-}
-```
-
-| Einstellung | Beschreibung | Standard |
-|-------------|-------------|----------|
-| `tick_interval_ms` | UI-Update-Intervall in ms | 250 |
-| `trainer_scan_timeout_sec` | Bluetooth-Scan-Timeout | 5 |
-| `default_ftp` | Standard-FTP für neue Profile | 250 |
-| `theme_mode` | Farbschema (nur "light") | light |
-| `workout_library_url` | HTTPS-Adresse der zentralen Bibliothek | leer |
-| `workout_library_token` | Persönliches Anmeldetoken; wird beim Login gesetzt | leer |
-
-## Trainer-Verbindung
-
-Cados sucht automatisch nach einem Wahoo KICKR über Bluetooth FTMS. Der Verbindungsstatus wird in der Kopfleiste angezeigt. Die Verbindung wird alle 8 Sekunden automatisch versucht.
-Ein Trainer gilt erst als bereit, wenn seine FTMS-Steuerfreigabe bestätigt wurde.
-Steuerbefehle laufen seriell in einem Hintergrund-Worker. Nur bestätigte Befehle
-werden als erfolgreich gespeichert; bei Fehlern erfolgt ein erneuter Versuch.
-Pause und Stop haben Vorrang vor noch nicht gesendeten Wattvorgaben. Bereits
-laufende Bluetooth-Befehle müssen zunächst beendet werden.
-
-Die Gerätesuche liest Service-UUIDs aus den Advertising-Daten gemäß der
-[Bleak-Scanner-API](https://bleak.readthedocs.io/en/latest/api/scanner.html).
-
-## Datenspeicherung
-
-Profile, Sessions, Messwerte und importierte Workouts liegen in einer lokalen
-SQLite-Datei. Unter macOS ist das standardmäßig
-`~/Library/Application Support/Cados/cados.sqlite3`, unter Windows
-`%LOCALAPPDATA%\Cados\cados.sqlite3`. SQLite benötigt keinen Server und überträgt
-keine Daten. Beim ersten Start werden vorhandene `data/profiles.json` und
-`data/sessions.json` einmalig und atomar übernommen. Die JSON-Dateien bleiben als
-Rückfallkopie erhalten.
-
-
-Sessions enthalten zusätzlich den Trainingsstart, den verwendeten FTP-Wert,
-die tatsächlich gefahrene Dauer, die Workout-Position, Durchschnittswerte, NP,
-IF, TSS, Kalorien und Messdaten für Leistung, Kadenz, Herzfrequenz und Sollleistung.
-NP und die beste vollständige Minute basieren auf zeitgewichteten Ein-Sekunden-Werten.
-Fehlende Herzfrequenzmessungen gehen nicht als 0 bpm in den Durchschnitt ein.
-
-Beim normalen Fensterschließen wird ein laufendes Training gestoppt und gespeichert.
-Schlägt die lokale Speicherung fehl, bleibt das Fenster offen und die Session bleibt
-für einen erneuten Versuch erhalten. Beim normalen App-Quit wird die Speicherung
-ebenfalls versucht. Ein erzwungenes Prozessende oder Stromausfall kann eine noch
-laufende, nicht gespeicherte Session weiterhin verlieren.
-
-Alte Sessions bleiben lesbar; damals nicht gespeicherte Messdaten können nicht
-nachträglich rekonstruiert werden. Beschädigte Altdaten werden nicht überschrieben
-und die Migration wird in diesem Fall nicht als abgeschlossen markiert.
-
-## Web-App und zentrale Synchronisation
-
-Unter `https://www.cados.saibot.at` ist die Web-App vorgesehen. Dort können Benutzer
-Workouts ansehen, importieren, bearbeiten, kopieren und löschen sowie Profile,
-FTP und Trainingshistorie verwalten. Administratoren legen weitere Benutzer an.
-Gemeinsame Workouts stehen allen Konten zur Verfügung; Profile und Historien sind privat.
-
-Über **Anmelden** verwendet die Desktop-App dasselbe Konto. Profile, abgeschlossene
-Trainings und Workouts werden beim Start und jede Minute im Leerlauf synchronisiert.
-**Synchronisieren** startet den Abgleich manuell. Während eines Trainings erfolgt
-kein Abgleich. Die SQLite-Datenbank ermöglicht Training ohne Netzwerkverbindung.
-Beim ersten Login werden die vorhandenen lokalen Daten diesem Konto zugeordnet.
-
-Die Desktop-App merkt sich erfolgreiche Kontoanmeldungen als lokale Sitzungstokens;
-Passwörter werden nicht gespeichert. Bei genau einem angemeldeten Konto wird es beim
-App-Start automatisch verwendet. Bei mehreren angemeldeten Konten erscheint eine
-Kontowahl. Jedes Konto besitzt eine getrennte lokale SQLite-Datenbank, sodass Profile,
-Trainingshistorien und Offline-Daten nicht vermischt werden.
-
-Bei widersprüchlichen Änderungen wird die Serverfassung übernommen; die lokale
-Fassung bleibt gesichert und kann über **Konto** exportiert werden. Dort sind auch
-Abmeldung und eine lokale Datensicherung verfügbar. Bluetooth-Einstellungen bleiben
-gerätespezifisch. Einzelheiten und Installationsschritte stehen in [server/README.md](server/README.md).
-
-## Entwicklung und Tests
-
-Unter Windows kann `Start-CADOS.cmd` nach Installation von Python 3.11 oder neuer
-mit Python Launcher per Doppelklick verwendet werden. Der Starter richtet eine
-Benutzerumgebung unter `%LOCALAPPDATA%\Cados` ein. Der Projektordner muss bestehen
-bleiben; dies ist ein Starter aus dem Quellcode, noch kein signierter Installer.
-
-Aus dem Projektordner mit installierten Abhängigkeiten:
-
-```bash
-python -m pip install -e .
-python -B -m unittest discover -s tests -v
-```
-
-Mit der bestehenden macOS-Umgebung:
-
-```bash
-"$HOME/Library/Application Support/Cados/.venv/bin/python" -B -m unittest discover -s tests -v
-```
-
-Die Tests verwenden simulierte Trainer und temporäre Datenordner. Qt-Tests laufen
-mit `QT_QPA_PLATFORM=offscreen`; ohne installiertes PySide6 werden nur diese Tests
-übersprungen. Die Tests prüfen unter anderem Bluetooth-Bestätigungen,
-Wiederholungsversuche, Verbindungswechsel, Auto-Pause, Session-Speicherung beim
-Schließen und Abwärtskompatibilität der Aufzeichnungen.
-
-Ein Test mit einem echten Trainer und einer echten Server-PostgreSQL-Instanz ist davon
-getrennt erforderlich, um das Verhalten dieser Geräte bzw. Dienste zu bestätigen.
-
-## Versionsverwaltung
-
-Quellcode, Tests, Workout-Vorlagen und die Starter gehören ins Repository.
-`data/`, `logs/`, SQLite-Dateien, virtuelle Umgebungen, Build-Ausgaben und Zugangsdaten
-werden durch `.gitignore` ausgeschlossen. Persönliche Trainingsdaten müssen
-separat gesichert werden.

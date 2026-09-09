@@ -1,4 +1,4 @@
-from cados.app import run
+from cados.connector_app import run
 
 
 if __name__ == "__main__":

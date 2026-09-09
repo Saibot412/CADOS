@@ -33,7 +33,9 @@ class ConnectorService:
 
     def __init__(self, config: AppConfig | None = None, *, status_callback: Callable[[dict], None] | None = None):
         self.config = config or AppConfig.load()
-        self.store = DataStore(self.config.paths.database_path)
+        account = self.config.current_account
+        database_path = self.config.database_path_for_account(account) if account else self.config.paths.database_path
+        self.store = DataStore(database_path)
         self.catalog = WorkoutCatalog(self.config.paths.bundled_workouts_dir, self.store)
         self.trainer = TrainerController(self.config.trainer_scan_timeout_sec)
         self.hr_monitor = HRMonitorService(self.config.trainer_scan_timeout_sec)
@@ -303,7 +305,7 @@ class ConnectorService:
 
     async def run(self) -> None:
         if not self.configured:
-            raise RuntimeError("Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
+            raise RuntimeError("Bitte den CADOS Connector mit Fenster starten und anmelden (python -m cados).")
         tasks = [asyncio.create_task(loop()) for loop in (self._local_loop, self._network_loop, self._sync_loop)]
         try:
             # Local-loop completion or failure must also shut down the network tasks.

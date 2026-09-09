@@ -65,44 +65,37 @@ verwenden und auf `cados:8000` zeigen; Port 8000 nicht öffentlich freigeben.
 
 ## Benutzung
 
-Im Browser anmelden, über **Benutzer** das Konto des Freundes anlegen und Zugangsdaten
-persönlich weitergeben. Jeder Benutzer hat private Profile, Trainings und Workouts.
-Administratoren können beim Import oder Kopieren **Für alle freigeben** wählen.
-Geteilte Workouts dürfen Mitglieder ansehen und privat kopieren, aber nicht ändern.
-Die Freigabe bestehender Datensätze wird nicht nachträglich geändert: dafür eine
-Kopie erstellen und gegebenenfalls das Original löschen.
+Benutzer registrieren sich im Browser und verwalten dort ihr Profil, Workouts und Kalender.
+JSON/ZWO-Import und der Workout-Builder unterstützen konstante Blöcke und Rampen.
+Administratoren verwalten Benutzer und veröffentlichen gemeinsame Workouts.
 
-JSON und ZWO werden über die Oberfläche importiert. Name, Beschreibung, Kategorie,
-Sortierung, Dauer und vorhandene Leistungs-/Kadenzziele lassen sich bearbeiten.
-Ein vollständiger Editor zum freien Zusammenstellen neuer Blöcke ist noch nicht enthalten.
-
-In der Desktop-App **Anmelden** wählen und dieselben Zugangsdaten verwenden.
-Beim ersten Login werden vorhandene lokale Profile und Trainings dem Konto zugeordnet.
-Die Desktop-App verwaltet für weitere angemeldete Konten automatisch getrennte lokale
-SQLite-Datenbanken. Ein separates `CADOS_DATA_DIR` muss dafür nicht manuell gesetzt werden.
+Den Connector von der Webseite herunterladen und mit demselben Konto anmelden.
+Er übernimmt Bluetooth und Training; die gesamte Workout-Verwaltung erfolgt im Browser.
+Gespeicherte Anmeldungen werden wiederverwendet. **Anmeldung ändern …** im Connector-Menü
+ermöglicht eine erneute Anmeldung. Weitere Konten erhalten getrennte lokale Datenbanken.
 
 ## Synchronisationsregeln
 
-* Beim Start, manuell und jede Minute im Leerlauf; während eines Trainings ausgesetzt.
-* Profile, abgeschlossene Trainings mit Messwerten und importierte Workouts werden
-  in beide Richtungen synchronisiert. Web-Einstellungen werden lokal übernommen.
-* Gerätedaten wie Bluetooth-Kennungen bleiben lokal.
-* Änderungen tragen Revisionen. Veraltete Schreibversuche ergeben HTTP 409.
-* Ändern Web und Desktop denselben Datensatz offline, gewinnt bei der anschließenden
-  Synchronisation die Serverfassung. Die lokale Fassung bleibt in `sync_conflicts`
-  gesichert und kann unter **Konto** exportiert werden.
-* Löschungen bleiben als Markierungen gespeichert, damit Offline-Geräte sie übernehmen.
-* Die erste Version lädt einen vollständigen Kontostand. Sehr große Historien benötigen
-  künftig paginierte Übertragung; der Desktop begrenzt Antworten auf 100 MB.
-* Laufende, noch nicht abgeschlossene Trainings werden nicht fortlaufend zum Server
-  gesichert. Ein erzwungenes Prozessende kann die laufende Session verlieren.
+* Der Connector synchronisiert beim Start und nach abgeschlossenen Trainings.
+  Fehlgeschlagene Übertragungen werden wiederholt.
+* Web-Einstellungen werden lokal übernommen. Trainings werden lokal gespeichert
+  und zum Server übertragen. Bluetooth-Kennungen bleiben lokal.
+* Änderungen tragen Revisionen; veraltete Schreibversuche ergeben HTTP 409.
+* Bei Konflikten bleibt die lokale Fassung in `sync_conflicts` gesichert,
+  während die Serverfassung übernommen wird.
+* Löschmarkierungen erreichen auch Geräte, die zwischenzeitlich offline waren.
+* Ein bereits gestartetes Training läuft bei Internetausfall weiter.
+  Lokale Tasten im Connector ermöglichen Pause, Fortsetzen und Beenden.
+* Laufende Trainings sind nicht fortlaufend auf dem Server gesichert.
+  Ein erzwungenes Prozessende kann die laufende Session verlieren.
+* Der Abgleich lädt derzeit den vollständigen Kontostand; Antworten sind auf 100 MB begrenzt.
 
 ## Betrieb und Wiederherstellung
 
 Passwörter liegen als gesalzene scrypt-Hashes vor. Anmeldetokens sind zufällig, gelten
 30 Tage und werden auf dem Server nur gehasht gespeichert. Browser verwenden HttpOnly-
 Cookies, SameSite und CSRF-Prüfung. Passwortänderung widerruft alle Anmeldungen des Kontos.
-Der Desktop speichert sein Token in den lokalen Benutzereinstellungen (unter macOS mit
+Der Connector speichert sein Token in den lokalen Benutzereinstellungen (unter macOS mit
 Dateimodus 0600); das Passwort wird nicht gespeichert.
 Abmelden entfernt die Anmeldung; bereits heruntergeladene Daten bleiben lokal verfügbar.
 

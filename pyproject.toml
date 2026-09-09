@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cados"
 version = "0.3.1"
-description = "Focused indoor cycling desktop app for macOS and Windows."
+description = "Indoor cycling web platform with a local Bluetooth connector."
 readme = "DOKUMENTATION.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,11 +16,12 @@ dependencies = [
 ]
 
 [project.scripts]
-cados = "cados.app:run"
-cados-connector = "cados.connector:run"
+cados = "cados.connector_app:run"
+cados-connector = "cados.connector_app:run"
+cados-connector-cli = "cados.connector:run"
 
 [tool.setuptools]
-packages = ["cados", "cados.core", "cados.models", "cados.services", "cados.ui"]
+packages = ["cados", "cados.core", "cados.models", "cados.services"]
 
 [tool.setuptools.package-data]
 cados = ["assets/*.png", "assets/workouts/*.json"]

@@ -22,7 +22,7 @@ class ConnectorResilienceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        config = SimpleNamespace(paths=SimpleNamespace(database_path=Path(self.temp.name)/'data.sqlite3',
+        config = SimpleNamespace(current_account=None, paths=SimpleNamespace(database_path=Path(self.temp.name)/'data.sqlite3',
             bundled_workouts_dir=Path('cados/assets/workouts')),trainer_scan_timeout_sec=1,
             workout_library_url='http://127.0.0.1:1',workout_library_token='test')
         with patch('cados.connector.TrainerController',return_value=FakeTrainer()), patch('cados.connector.HRMonitorService',return_value=FakeHRMonitor()):
