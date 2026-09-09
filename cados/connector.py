@@ -130,8 +130,8 @@ class ConnectorService:
                 from cados.models.profile import UserProfile
                 profile = UserProfile.from_dict(command["profile"]) if command.get("profile") else self._active_profile()
                 self.engine.set_profile(profile)
-                self.engine.set_adaptive_erg(bool(command.get("adaptive_erg")))
                 self.engine.load_workout(workout, ftp_watts=(profile.ftp_watts if profile else None))
+                self.engine.set_adaptive_erg(bool(command.get("adaptive_erg")))
                 self._plan_id = command.get("plan_id")
                 self._last_session_id = None
                 self.engine.start()
@@ -180,6 +180,7 @@ class ConnectorService:
             "type": "telemetry",
             "payload": {
                 "state": snapshot.state,
+                "ftp_test": self.engine.is_ftp_test,
                 "started_at": self.engine.started_at,
                 "auto_paused": snapshot.auto_paused,
                 "session_id": self._last_session_id,

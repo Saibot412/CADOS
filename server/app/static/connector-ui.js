@@ -40,7 +40,7 @@ renderLive = function () {
     document.querySelector(".heading").after(download);
   }
   const link = document.querySelector("#connector-download-link");
-  const downloadUrl = connectorRelease?.macos?.url || "https://github.com/Saibot412/CADOS/releases/download/v0.3.0/CADOS-Connector-macOS.dmg";
+  const downloadUrl = connectorRelease?.macos?.url || "https://github.com/Saibot412/CADOS/releases/download/v0.3.1/CADOS-Connector-macOS.dmg";
   link.href = connectorInstalledHere ? 'cados-connector://open' : downloadUrl;
   link.textContent = connectorInstalledHere ? 'Connector starten' : 'Connector für macOS laden';
   link.target = connectorInstalledHere ? '_self' : '_blank';

@@ -9,7 +9,7 @@ import time
 import asyncio
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, UTC
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
@@ -24,6 +24,7 @@ from cados.core.workout_loader import WorkoutLoader
 from cados.core.zwo_importer import parse_zwo
 from cados.models.profile import UserProfile
 from cados.models.session import WorkoutSessionRecord
+from cados.core.session_analysis import ftp_test_result, measured_max_hr
 from server.app.database import migrate, records, tokens, users
 from server.app.security import hash_password, token_hash, verify_password
 from server.app.validation import validate_workout_payload
@@ -40,6 +41,10 @@ class Registration(Credentials):
 
 class UserStatus(BaseModel):
     active: bool
+
+class FTPAdoption(BaseModel):
+    profile_revision: int = Field(ge=0)
+
 
 class Change(BaseModel):
     id: str
@@ -158,6 +163,14 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                     connection.execute(records.insert().values(id=identifier, owner=None, kind="workout",
                         revision=1, deleted=False, payload=payload, publisher={"name": "CADOS", "user_id": None}))
                 else:
+                    if path.name == "FTP Ramp Test (ERG).json":
+                        from server.app.builtin_updates import update_ftp_blocks
+                        existing = connection.execute(sa.select(records).where(records.c.id == identifier)).mappings().one()
+                        replacement = WorkoutLoader(path.parent).load_path(path).to_dict()
+                        updated = update_ftp_blocks(existing["payload"], replacement)
+                        if updated is not None and not existing["deleted"]:
+                            connection.execute(records.update().where(records.c.id == identifier).values(
+                                payload=updated, revision=records.c.revision + 1))
                     # These deterministic IDs identify the shipped library, not user publications.
                     connection.execute(records.update().where(records.c.id == identifier, records.c.publisher.is_(None)).values(
                         publisher={"name": "CADOS", "user_id": None}, revision=records.c.revision + 1))
@@ -408,6 +421,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
     @app.post("/api/v1/sync")
     def sync(batch: Changes, user=Depends(current_user)):
         result = []
+        peak_hr = None
         try:
             with engine.begin() as connection:
                 for change in batch.changes:
@@ -422,6 +436,16 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                         raise HTTPException(403, "Nur Administratoren verwalten gemeinsame Workouts.")
                     row = connection.execute(sa.select(records).where(records.c.id == change.id).with_for_update()).mappings().first()
                     owner = None if change.shared else user["id"]
+                    if change.kind == "session" and not change.deleted:
+                        analysis = ftp_test_result(payload)
+                        previous_result = (row["payload"].get("ftp_test_result") or {}) if row else {}
+                        if analysis and previous_result.get("applied_at"):
+                            analysis["applied_at"] = previous_result["applied_at"]
+                        payload = {**payload, "ftp_test_result": analysis}
+                        measured = measured_max_hr(payload.get("samples") or [])
+                        if measured is not None:
+                            peak_hr = max(peak_hr or 0, measured)
+                            payload["metrics"] = {**(payload.get("metrics") or {}), "max_heart_rate": measured}
                     if row:
                         if row["owner"] != user["id"] and not (row["owner"] is None and user["admin"]):
                             raise HTTPException(403, "Kein Schreibzugriff.")
@@ -447,9 +471,46 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                             revision=1, payload=payload, deleted=change.deleted, publisher=publisher))
                     saved = connection.execute(sa.select(records).where(records.c.id == change.id)).mappings().one()
                     result.append(serialize(saved))
+                if peak_hr is not None:
+                    profiles = connection.execute(sa.select(records).where(records.c.owner == user["id"],
+                        records.c.kind == "profile", records.c.deleted.is_(False)).with_for_update()).mappings().all()
+                    for profile in profiles:
+                        previous = profile["payload"].get("max_hr") or 0
+                        if peak_hr > previous:
+                            updated = {**profile["payload"], "max_hr": peak_hr, "updated_at": datetime.now(UTC).isoformat()}
+                            connection.execute(records.update().where(records.c.id == profile["id"]).values(payload=updated, revision=profile["revision"]+1))
+                # Return current revisions even when a session also updated a profile in this batch.
+                result = [serialize(connection.execute(sa.select(records).where(records.c.id == item["id"])).mappings().one()) for item in result]
         except IntegrityError as exc:
             raise HTTPException(409, "Gleichzeitige Änderung. Bitte erneut synchronisieren.") from exc
         return {"records": result}
+
+    @app.post("/api/v1/sessions/{session_id}/ftp")
+    def adopt_ftp(session_id: str, request: FTPAdoption, user=Depends(current_user)):
+        with engine.begin() as connection:
+            session = connection.execute(sa.select(records).where(records.c.id == session_id,
+                records.c.owner == user["id"], records.c.kind == "session", records.c.deleted.is_(False)).with_for_update()).mappings().first()
+            if session is None:
+                raise HTTPException(404, "Training nicht gefunden.")
+            result = ftp_test_result(session["payload"])
+            if not result or not result.get("eligible"):
+                raise HTTPException(422, "Dieser Test enthält keine verwertbare FTP-Schätzung.")
+            if (session["payload"].get("ftp_test_result") or {}).get("applied_at"):
+                raise HTTPException(409, "Dieser Testwert wurde bereits übernommen.")
+            profiles = connection.execute(sa.select(records).where(records.c.owner == user["id"],
+                records.c.kind == "profile", records.c.deleted.is_(False)).with_for_update()).mappings().all()
+            if len(profiles) != 1:
+                raise HTTPException(422, "Bitte zuerst deine Trainingswerte in den Einstellungen vervollständigen.")
+            profile = profiles[0]
+            if profile["revision"] != request.profile_revision:
+                raise HTTPException(409, "Dein Profil wurde inzwischen geändert. Bitte aktualisieren und den FTP-Wert erneut prüfen.")
+            now = datetime.now(UTC).isoformat()
+            updated = {**profile["payload"], "ftp": result["estimated_ftp"], "updated_at": now}
+            connection.execute(records.update().where(records.c.id == profile["id"]).values(payload=updated, revision=profile["revision"]+1))
+            result["applied_at"] = now
+            connection.execute(records.update().where(records.c.id == session_id).values(
+                payload={**session["payload"], "ftp_test_result": result}, revision=session["revision"]+1))
+        return {"ftp": result["estimated_ftp"]}
 
     @app.post("/api/v1/import")
     async def import_workout(request: Request, filename: str, shared: bool = False, user=Depends(current_user)):

@@ -1,3 +1,18 @@
+# CADOS 0.3.1
+
+- FTP-Rampentest bis 200 % der bisherigen FTP: bei 300 W FTP sind bis zu 600 W Sollleistung vorgesehen.
+- Normaler ERG im FTP-Rampentest; adaptive Entlastung bleibt ausgeschaltet.
+- Auswertung nach Testende: bisherige FTP, Schätzung, Veränderung in Watt und Prozent. Die neue FTP wird nur auf ausdrücklichen Klick übernommen.
+- Grundlage: 75 % der besten vollständigen, zusammenhängenden Messminute im Stufenteil. Warmup, Pausen und zu kurze Messabschnitte ergeben keinen verwertbaren Testwert.
+- Höhere gemessene Herzfrequenzwerte (50–250 bpm) erhöhen beim Synchronisieren einer Einheit automatisch den Profilwert. Niedrigere Werte senken ihn nicht.
+- Unveränderte mitgelieferte FTP-Testblöcke werden beim Serverstart aktualisiert. Eigene Blockänderungen und Löschungen bleiben erhalten.
+
+Veröffentlichung: Release `v0.3.1` auf GitHub erstellen, die neue `release/CADOS-Connector-macOS.dmg` anhängen, danach Server und Mac-Connector aktualisieren. Die Felder liegen in vorhandenen JSON-Daten; keine weitere Schemaänderung erforderlich.
+
+Die FTP bleibt eine Rampentest-Schätzung. Den Vorschlag nur nach einem bis zur persönlichen Belastungsgrenze gefahrenen Test übernehmen. Die Tests nutzen simulierte Trainerdaten; die reale Belastungsregelung hängt vom angeschlossenen Trainer ab.
+
+---
+
 # CADOS 0.3.0
 
 ## Training im Mittelpunkt

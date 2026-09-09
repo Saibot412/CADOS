@@ -134,6 +134,36 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.save({**saved, "deleted": True}).status_code, 200)
         self.assertTrue(next(r for r in self.client.get("/api/v1/sync").json()["records"] if r["id"] == saved["id"])["deleted"])
 
+    def test_session_peak_hr_is_automatic_but_ftp_requires_confirmation(self):
+        from test_session_analysis import test_session
+        profile = self.change();profile["payload"].update(ftp=300,max_hr=180)
+        saved_profile = self.save(profile).json()["records"][0]
+        data = {**test_session(), "duration_sec":120,"status":"stopped","trainer_source":"test"}
+        change = {"id":str(uuid4()),"kind":"session","revision":0,"payload":data}
+        response = self.save(change)
+        self.assertEqual(response.status_code,200,response.text)
+        session=response.json()["records"][0]
+        snapshot=self.client.get("/api/v1/sync").json()["records"]
+        current=next(r for r in snapshot if r["id"]==profile["id"])
+        self.assertEqual(current["payload"]["max_hr"],190)
+        self.assertEqual(current["payload"]["ftp"],300)
+        self.assertEqual(session["payload"]["ftp_test_result"]["estimated_ftp"],330)
+        url="/api/v1/sessions/"+session["id"]+"/ftp"
+        self.assertEqual(self.client.post(url,json={"profile_revision":saved_profile["revision"]}).status_code,409)
+        self.assertEqual(self.client.post(url,json={"profile_revision":current["revision"]}).status_code,200)
+        self.assertEqual(self.client.post(url,json={"profile_revision":current["revision"]}).status_code,409)
+        updated=next(r for r in self.client.get("/api/v1/sync").json()["records"] if r["id"]==profile["id"])
+        self.assertEqual(updated["payload"]["ftp"],330)
+        self.assertEqual(updated["payload"]["max_hr"],190)
+        # A later lower peak never decreases the stored maximum.
+        lower={**data,"samples":[{"heart_rate":160}]}
+        self.assertEqual(self.save({**change,"id":str(uuid4()),"payload":lower}).status_code,200)
+        updated=next(r for r in self.client.get("/api/v1/sync").json()["records"] if r["id"]==profile["id"])
+        self.assertEqual(updated["payload"]["max_hr"],190)
+        self.client.post("/api/v1/users",json={"email":"friend@example.test","password":"test-password-123"})
+        self.login("friend@example.test")
+        self.assertEqual(self.client.post(url,json={"profile_revision":1}).status_code,404)
+
     def test_batch_is_atomic(self):
         record=self.change()
         bad=self.change();bad["kind"]="unknown"

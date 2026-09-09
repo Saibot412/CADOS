@@ -2,6 +2,7 @@
 
 let serverConnected=false,lastTelemetryAt=0,pendingStart=false,selectedPlanId=null;
 let pendingReview=null,reviewAttempt=0,reviewBusy=false,hasRecovered=false,homeLiveKey='';
+const isFTPRamp=workout=>/ftp/i.test(workout?.name||'')&&/ramp/i.test(workout?.name||'');
 const isTrainingActive=()=>['running','paused','waiting_for_pedal'].includes(liveData.state);
 const sessionStatus=status=>({completed:'Abgeschlossen',stopped:'Vorzeitig beendet',interrupted:'Unterbrochen'})[status]||'Gespeichert';
 function setDataLoading(loading){$('#refresh').disabled=loading;$('#refresh').textContent=loading?'Lädt …':'Aktualisieren';$('#dashboard').setAttribute('aria-busy',String(loading));}
@@ -86,6 +87,7 @@ renderLive=function(){
  }else if(liveData.state==='paused'){
   detail.textContent=liveData.auto_paused?'Automatisch pausiert. Sobald du wieder trittst, geht es sanft weiter.':'Training pausiert. Klicke auf „Fortsetzen“, wenn du bereit bist.';
  }else if(liveData.session_id){detail.textContent=liveData.sync_pending?'Training lokal gespeichert. Die Synchronisierung wird automatisch nachgeholt.':'Training gespeichert und synchronisiert.';}
+ if(liveData.ftp_test||isFTPRamp(liveWorkoutForChart())){$('#live-erg').value='normal';$('#live-erg').disabled=true;$('#live-target-note').textContent='FTP-Test · normaler ERG';}
  if(pendingStart){$('#live-state').textContent='Start wird bestätigt …';$('#live-stop').disabled=true;}
  const key=[liveData.state,connectorConnected,liveData.trainer_connected,connectorInstalledHere,connectorVersion,connectorRelease?.version].join('|');
  if(key!==homeLiveKey){homeLiveKey=key;renderOverview();}
@@ -140,10 +142,37 @@ function sessionZones(p){
   row.append(label,track,node('strong',formatTime(seconds[i])));section.append(row);
  });section.append(node('p','Berechnet aus deinen gemessenen Wattwerten und der FTP dieser Einheit ('+ftp+' W).','chart-axis-description'));return section;
 }
+function ftpResultCard(record){
+ const result=record.payload.ftp_test_result;
+ if(!result)return null;
+ const card=node('section',undefined,'ftp-result');card.append(node('p','DEIN FTP-TEST','eyebrow'),node('h3','Deine neue Leistungsbasis'));
+ if(!result.eligible){card.append(node('p',result.reason||'Für diesen Test ist keine FTP-Schätzung möglich.'));return card;}
+ const old=Number(result.old_ftp),next=Number(result.estimated_ftp),delta=next-old,percent=old>0?Math.abs(delta)/old*100:0;
+ const comparison=node('div',undefined,'result-metrics');
+ for(const [label,value] of [['Alte FTP',old+' W'],['Ermittelte FTP',next+' W'],['Veränderung',(delta>0?'+':'')+delta+' W']]){const item=node('article');item.append(node('span',label),node('strong',value));comparison.append(item);}
+ card.append(comparison,node('p',delta===0?'Deine FTP ist unverändert.':(delta>0?'Verbessert':'Gesunken')+' um '+Math.abs(delta)+' W ('+percent.toLocaleString('de-AT',{maximumFractionDigits:1})+' %).','ftp-change'));
+ card.append(node('p','Schätzung aus 75 % deiner besten zusammenhängenden Minute im Belastungsteil ('+result.best_minute_watts+' W). Übernimm den Wert, wenn du den Test bis zu deiner Belastungsgrenze gefahren bist.','muted'));
+ if(result.applied_at){card.append(node('p','Dieser FTP-Wert wurde bereits übernommen.','ftp-applied'));return card;}
+ const profile=active('profile')[0],actions=node('div',undefined,'detail-actions'),status=node('p');status.setAttribute('role','status');
+ const apply=primaryButton(next+' W als neue FTP übernehmen',async()=>{
+  apply.disabled=true;keep.disabled=true;
+  try{
+   await post('/sessions/'+record.id+'/ftp',{profile_revision:profile.revision});
+   status.textContent='Neue FTP gespeichert.';
+   await reload();showSession(active('session').find(r=>r.id===record.id));
+  }catch(error){status.textContent=error.message;apply.disabled=false;keep.disabled=false;}
+ });apply.disabled=!profile;
+ const keep=button('Bisherige FTP behalten',()=>{actions.hidden=true;status.textContent='Deine FTP bleibt unverändert.';});
+ if(profile&&Number(profile.payload.ftp)!==old)card.append(node('p','Dein aktuelles Profil enthält inzwischen '+profile.payload.ftp+' W. Dieser Wert würde ersetzt.','muted'));
+ actions.append(apply,keep);card.append(actions,status);return card;
+}
+
 function showSession(record){
  const p=record.payload,content=$('#session-content');content.replaceChildren();
- $('#session-title').textContent=p.status==='completed'?'Training geschafft.':sessionStatus(p.status);
+ $('#session-title').textContent=p.ftp_test_result?.eligible?'FTP-Test ausgewertet.':p.status==='completed'?'Training geschafft.':sessionStatus(p.status);
  content.append(node('p',p.workout_name,'result-workout'),node('p',readableDate(dayKey(p.timestamp))+' · '+sessionStatus(p.status),'muted'));
+ const ftpCard=ftpResultCard(record);if(ftpCard)content.append(ftpCard);
+ const peak=p.metrics?.max_heart_rate;if(peak)content.append(node('p','Höchster aufgezeichneter Puls: '+peak+' bpm. Höhere Messwerte werden automatisch als maximale Herzfrequenz im Profil gespeichert.','hr-peak'));
  const summary=node('div',undefined,'result-metrics');
  for(const [label,value] of [['Trainingszeit',formatTime(p.duration_sec)],['Ø Leistung',metric(p.metrics?.avg_watts,'W')],['Ø Kadenz',metric(p.metrics?.avg_cadence,'rpm')],['Belastung',metric(p.metrics?.tss,'TSS')]]){const card=node('article');card.append(node('span',label),node('strong',value));summary.append(card);}
  content.append(summary,sessionComparison(p),sessionZones(p));

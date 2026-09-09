@@ -198,7 +198,9 @@ function openWorkout(record,planId=null) {
   $('#workout-detail-title').textContent=p.name;
   content.append(node('p',workoutPublisher(record),'workout-publisher'));
   content.append(node('p',(p.category||'Workout')+' · '+durationOf(p)+' min','detail-meta'),node('p',p.description||'Dein strukturiertes Training.'),workoutPreview(p,active('profile')[0]?.payload.ftp||250));
-  $('#prepare-erg').value=$('#live-erg').value;
+  const ftpTest=isFTPRamp(p);$('#prepare-erg').disabled=ftpTest;
+  $('#prepare-erg').value=ftpTest?'normal':$('#live-erg').value;
+  if(ftpTest)content.append(node('p','FTP-Rampentest: normaler ERG ohne adaptive Entlastung. Beende das Training, sobald du die Belastung nicht mehr halten kannst. Die Auswertung erscheint anschließend.','ftp-test-hint'));
   const manage=$('#workout-manage');manage.replaceChildren();
   const closeThen=action=>()=>{$('#workout-detail').close();return action();};
   manage.append(button(user.admin||!record.shared?'Workout bearbeiten':'Workout-Details',closeThen(()=>edit(record))),button('Kopieren',closeThen(()=>copy(record))),button('Exportieren',()=>download(record)));

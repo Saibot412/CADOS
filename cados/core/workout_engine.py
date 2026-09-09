@@ -37,6 +37,7 @@ class TrainingSnapshot:
     ramping: bool = False
     avg_watts: int = 0
     avg_cadence: int = 0
+    max_heart_rate: int = 0
     avg_heart_rate: int = 0
     normalized_power: int = 0
     intensity_factor: float = 0.0
@@ -91,7 +92,7 @@ class WorkoutEngine:
 
     def set_adaptive_erg(self, enabled: bool) -> TrainingSnapshot:
         """Switch ERG controllers safely, including while a workout is running."""
-        self.adaptive_erg = bool(enabled)
+        self.adaptive_erg = bool(enabled) and not self.is_ftp_test
         self._adaptive_low_cadence_sec = 0.0
         self._adaptive_relief_watts = 0.0
         if self.workout is None:
@@ -106,6 +107,8 @@ class WorkoutEngine:
         resolved_ftp = ftp_watts or (self.profile.ftp_watts if self.profile else None)
         self.workout_template = workout_template
         self.workout = workout_template.resolve(resolved_ftp, default_ftp_watts=DEFAULT_FTP_WATTS)
+        if self.is_ftp_test:
+            self.adaptive_erg = False
         self.state = "ready"
         self.elapsed_sec = 0.0
         self.adjustment_watts = 0
@@ -151,6 +154,7 @@ class WorkoutEngine:
 
     def pause(self) -> TrainingSnapshot:
         if self.state in {"running", "waiting_for_pedal"}:
+            self.metrics.break_power_window()
             self.state = "paused"
             self._auto_paused = False
             self._ramping = False
@@ -211,6 +215,7 @@ class WorkoutEngine:
 
         if self.state == "running" and (not probe.connected or dt > self.MAX_TICK_GAP_SEC):
             # Never count a disconnected interval or a suspended UI as riding.
+            self.metrics.break_power_window()
             self.state = "paused"
             self._auto_paused = dt <= self.MAX_TICK_GAP_SEC
             self._ramping = False
@@ -245,6 +250,7 @@ class WorkoutEngine:
             if self.elapsed_sec >= self.workout.total_duration_sec:
                 return self._complete_workout()
             if self._zero_watts_sec >= self.ZERO_WATTS_PAUSE_DELAY_SEC:
+                self.metrics.break_power_window()
                 self.state = "paused"
                 self._auto_paused = True
                 self._ramping = False
@@ -408,15 +414,24 @@ class WorkoutEngine:
         if self.workout is None:
             return False
         name = self.workout.name.lower()
-        return "ftp" in name and ("test" in name or "ramp" in name)
+        return "ftp" in name and "ramp" in name
 
     def best_1min_avg_watts(self) -> int:
         """Best complete 60-second window on a one-second power series."""
+        if self.is_ftp_test:
+            return (self._ftp_result() or {}).get("best_minute_watts", 0)
         return round(self.metrics.best_minute)
 
     def calculate_ftp_from_ramp(self) -> int:
         """FTP = 75% of best 1-minute average power (standard ramp test protocol)."""
-        return round(self.best_1min_avg_watts() * 0.75)
+        return (self._ftp_result() or {}).get("estimated_ftp", 0)
+
+    def _ftp_result(self) -> dict | None:
+        from cados.core.session_analysis import ftp_test_result
+        if self.workout is None:
+            return None
+        return ftp_test_result({"workout_name": self.workout.name, "ftp_watts": self.workout.ftp_watts,
+            "workout_payload": self.workout_template.to_dict(), "samples": self.metrics.samples})
 
     def _complete_workout(self) -> TrainingSnapshot:
         if self.workout is None or self.state in {"completed", "stopped"}:
@@ -434,6 +449,7 @@ class WorkoutEngine:
         profile = self.profile or UserProfile(name="Standard", ftp=self.workout.ftp_watts)
         workout_payload = self.workout_template.to_dict() if self.workout_template is not None else self.workout.to_dict()
         return WorkoutSessionRecord(
+            ftp_test_result=self._ftp_result(),
             user_id=profile.id,
             user_name=profile.name,
             workout_name=self.workout.name,
