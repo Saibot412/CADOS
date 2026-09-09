@@ -2,11 +2,21 @@
 
 let connectorInstalledHere = false;
 try { connectorInstalledHere = localStorage.getItem('cados.connector.installed') === 'yes'; } catch {}
-if (location.hash === '#connector-ready') {
+function rememberConnectorLaunch() {
+  if (location.hash !== '#connector-ready') return false;
   connectorInstalledHere = true;
   try { localStorage.setItem('cados.connector.installed', 'yes'); } catch {}
   history.replaceState(null, '', location.pathname + location.search);
+  return true;
 }
+rememberConnectorLaunch();
+window.addEventListener('hashchange', () => { if (rememberConnectorLaunch()) renderLive(); });
+window.addEventListener('storage', event => {
+  if (event.key === 'cados.connector.installed') {
+    connectorInstalledHere = event.newValue === 'yes';
+    renderLive();
+  }
+});
 
 const renderLiveBase = renderLive;
 renderLive = function () {

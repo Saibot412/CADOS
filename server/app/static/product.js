@@ -17,13 +17,72 @@ const navPaths = {
   users:'M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M2 21v-2a8 8 0 0 1 16 0v2m-1-17a4 4 0 0 1 0 7m3 4a7 7 0 0 1 2 6'
 };
 for (const tab of document.querySelectorAll('[data-tab]')) {
+  const label=tab.textContent.trim();
+  tab.textContent='';tab.append(node('span',label,'nav-label'));
+  tab.setAttribute('aria-label',label);tab.title=label;
   const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('aria-hidden','true');
   const path = document.createElementNS(svg.namespaceURI,'path');
   path.setAttribute('d',navPaths[tab.dataset.tab]); svg.append(path); tab.prepend(svg);
 }
 
+const sidebarToggle=node('button',undefined,'sidebar-toggle');
+sidebarToggle.type='button';sidebarToggle.id='sidebar-toggle';
+document.querySelector('#dashboard>nav').prepend(sidebarToggle);
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle('sidebar-collapsed',collapsed);
+  sidebarToggle.setAttribute('aria-expanded',String(!collapsed));
+  sidebarToggle.setAttribute('aria-label',collapsed?'Menü ausklappen':'Menü einklappen');
+  sidebarToggle.title=sidebarToggle.getAttribute('aria-label');
+  sidebarToggle.replaceChildren(node('span',collapsed?'›':'‹','sidebar-chevron'),node('span','Menü einklappen','nav-label'));
+  try{localStorage.setItem('cados.sidebar.collapsed',String(collapsed));}catch{}
+}
+let sidebarCollapsed=false;
+try{sidebarCollapsed=localStorage.getItem('cados.sidebar.collapsed')==='true';}catch{}
+setSidebarCollapsed(sidebarCollapsed);
+sidebarToggle.onclick=()=>setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+
+let previewDialog=null,previewTimer,previewCloseTimer,previewPinned=false;
+function closeChartPreview() {
+  clearTimeout(previewTimer);clearTimeout(previewCloseTimer);
+  if(previewDialog?.open)previewDialog.close();
+}
+function showChartPreview(workout,ftp,pinned=false) {
+  clearTimeout(previewTimer);clearTimeout(previewCloseTimer);
+  if(!previewDialog){
+    previewDialog=node('dialog');previewDialog.id='chart-preview';
+    previewDialog.setAttribute('aria-labelledby','chart-preview-title');document.body.append(previewDialog);
+    previewDialog.addEventListener('pointerenter',()=>clearTimeout(previewCloseTimer));
+    previewDialog.addEventListener('pointerleave',()=>{if(!previewPinned)previewCloseTimer=setTimeout(closeChartPreview,180);});
+  }
+  if(previewDialog.open)previewDialog.close();
+  previewPinned=pinned;previewDialog.replaceChildren();
+  const heading=node('div',undefined,'dialog-head'),title=node('h2',workout.name||'Workout-Verlauf');title.id='chart-preview-title';
+  heading.append(title,button('Schließen',closeChartPreview));
+  previewDialog.append(heading,powerZonePreview(workout,ftp,true),node('p','Leistung in Watt · Kadenz in rpm · Zeit in Minuten:Sekunden','chart-axis-description'));
+  previewDialog.classList.toggle('hover-preview',!pinned);
+  if(pinned)previewDialog.showModal();else previewDialog.show();
+}
+function expandableWorkoutPreview(workout,ftp) {
+  const trigger=node('button',undefined,'preview-trigger');trigger.type='button';
+  trigger.setAttribute('aria-label','Diagramm vergrößern: '+(workout.name||'Workout'));
+  trigger.setAttribute('aria-haspopup','dialog');
+  trigger.append(powerZonePreview(workout,ftp),node('span','Vergrößern ↗','preview-hint'));
+  trigger.onclick=()=>showChartPreview(workout,ftp,true);
+  trigger.addEventListener('pointerenter',()=>{
+    if(matchMedia('(hover: hover) and (pointer: fine)').matches&&!trigger.closest('dialog')) {
+      clearTimeout(previewCloseTimer);previewTimer=setTimeout(()=>showChartPreview(workout,ftp),500);
+    }
+  });
+  trigger.addEventListener('pointerleave',()=>{
+    clearTimeout(previewTimer);if(!previewPinned)previewCloseTimer=setTimeout(closeChartPreview,180);
+  });
+  return trigger;
+}
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&previewDialog?.open){event.preventDefault();closeChartPreview();}});
+
 function navigate(page) {
+  closeChartPreview();
   currentPage = page;
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.className = tab.dataset.tab === page ? '' : 'quiet';
@@ -130,8 +189,7 @@ function renderOverview() {
     else hero.append(button('Plan im Kalender ansehen',()=>navigate('calendar')));
   } else {
     hero.append(node('h2','Zeit für deine nächste Einheit.'),node('p','Entdecke deine Workouts oder plane schon jetzt dein nächstes Training.'));
-    const art=workoutPreview({blocks:[{duration_sec:100,target_watts:65},{duration_sec:60,target_watts:125},{duration_sec:40,target_watts:65},{duration_sec:60,target_watts:165},{duration_sec:40,target_watts:65},{duration_sec:60,target_watts:125},{duration_sec:100,target_watts:65}]},250);
-    art.setAttribute('aria-hidden','true');art.querySelectorAll('text').forEach(label=>label.remove());hero.append(art,primaryButton('Workouts entdecken',()=>navigate('workout')));
+    hero.append(primaryButton('Workouts entdecken',()=>navigate('workout')));
   }
   const recent=$('#recent-sessions');recent.replaceChildren();
   if(!sessions.length)recent.append(node('p','Deine erste Einheit wartet auf dich. Nach dem Training findest du hier deinen Verlauf.','empty'));
