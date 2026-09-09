@@ -16,6 +16,14 @@
 - Nach Rechner-Ruhezustand bleibt das Training pausiert, bis es ausdrücklich fortgesetzt wird; die Schlafzeit zählt nicht als Trainingszeit.
 - Abschlüsse werden zuerst lokal gespeichert und später synchronisiert, auch nach einem Connector-Neustart.
 
+## Workout-Builder im Web
+
+- Neue Workouts direkt in der Bibliothek erstellen oder bestehende bearbeiten.
+- Konstante Blöcke und Rampen mit Minuten/Sekunden, Watt oder % FTP sowie optionaler Kadenz.
+- Sofortige Diagrammvorschau mit Markierung des bearbeiteten Blocks; Blöcke kopieren, verschieben oder entfernen.
+- Gemeinsame Workouts bleiben für normale Nutzer schreibgeschützt und können als private Kopie bearbeitet werden.
+- Diese Ergänzung benötigt nur ein Update des Webservers; Connector 0.3.0 bleibt kompatibel.
+
 ## Veröffentlichung
 
 1. GitHub-Release mit Tag `v0.3.0` erstellen und `release/CADOS-Connector-macOS.dmg` als Asset hochladen.
