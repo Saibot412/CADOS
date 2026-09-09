@@ -145,5 +145,9 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/static/live-focus.css").status_code,200)
         release = self.client.get("/static/connector-release.json")
         self.assertEqual(release.status_code, 200)
-        self.assertEqual(release.json()["version"], "0.2.0")
+        from cados import __version__
+        self.assertEqual(release.json()["version"], __version__)
+        self.assertIn("/v" + __version__ + "/", release.json()["macos"]["url"])
+        self.assertEqual(self.client.get("/static/experience.js").status_code, 200)
+        self.assertEqual(self.client.get("/static/experience.css").status_code, 200)
         self.assertEqual(len(self.client.get("/api/v1/sync").json()["records"]),26)

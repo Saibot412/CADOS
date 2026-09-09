@@ -212,7 +212,7 @@ class WorkoutEngine:
         if self.state == "running" and (not probe.connected or dt > self.MAX_TICK_GAP_SEC):
             # Never count a disconnected interval or a suspended UI as riding.
             self.state = "paused"
-            self._auto_paused = True
+            self._auto_paused = dt <= self.MAX_TICK_GAP_SEC
             self._ramping = False
             self._block_transition_from_watts = None
             self.trainer.pause_session()

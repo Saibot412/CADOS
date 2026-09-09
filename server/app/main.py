@@ -75,6 +75,8 @@ class ConnectorHub:
         async with self.lock:
             if self.connectors.get(user_id) is socket:
                 self.connectors.pop(user_id, None)
+            else:
+                return
         await self.broadcast(user_id, {"type": "connector", "connected": False})
 
     async def add_browser(self, user_id: str, socket: WebSocket) -> None:
@@ -293,9 +295,15 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                 if not isinstance(message, dict) or message.get("type") != "command":
                     continue
                 command = message.get("command")
-                if not isinstance(command, dict) or command.get("name") not in {"connect", "start", "pause", "resume", "stop", "erg_mode"}:
+                if not isinstance(command, dict) or command.get("name") not in {"connect", "start", "pause", "resume", "stop", "erg_mode", "snapshot"}:
                     await websocket.send_json({"type": "error", "message": "Ungültiger Connector-Befehl"})
                     continue
+                if command.get("name") == "start":
+                    with engine.connect() as connection:
+                        profile = connection.execute(sa.select(records.c.payload).where(
+                            records.c.owner == user["id"], records.c.kind == "profile", records.c.deleted.is_(False)
+                        )).first()
+                    command["profile"] = profile[0] if profile else None
                 if not await hub.command(user["id"], command):
                     await websocket.send_json({"type": "error", "message": "CADOS Connector ist auf diesem Konto nicht verbunden."})
         except WebSocketDisconnect:
@@ -314,7 +322,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         try:
             while True:
                 message = await websocket.receive_json()
-                if isinstance(message, dict) and message.get("type") in {"telemetry", "status", "error", "session"}:
+                if isinstance(message, dict) and message.get("type") in {"telemetry", "status", "error", "session", "recovery"}:
                     await hub.broadcast(user["id"], message)
         except WebSocketDisconnect:
             pass
@@ -482,6 +490,10 @@ def validate_record(kind, payload, deleted=False):
             raise ValueError("Ungültige maximale Herzfrequenz")
     elif kind == "session":
         session = WorkoutSessionRecord.from_dict(payload)
+        if session.plan_id is not None:
+            UUID(str(session.plan_id))
+        if session.perceived_exertion is not None and (type(session.perceived_exertion) is not int or not 1 <= session.perceived_exertion <= 10):
+            raise ValueError("Die Belastungsbewertung muss zwischen 1 und 10 liegen.")
         if not 0 <= session.duration_sec <= 86400 or len(session.samples) > 400000:
             raise ValueError("Ungültige Trainingsdauer oder Messwertanzahl")
     elif kind == "plan":

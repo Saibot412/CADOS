@@ -37,7 +37,7 @@ function renderLiveChart() {
   if (!svg) return;
   svg.replaceChildren();
   const workout = liveWorkoutForChart();
-  const ftp = active("profile")[0]?.payload.ftp || 250;
+  const ftp = liveData.ftp_watts || active("profile")[0]?.payload.ftp || 250;
   const blocks = workout?.blocks || [];
   let cursor = 0;
   const power = [], cadence = [];
@@ -88,7 +88,7 @@ function renderLiveFocus() {
   if (Number.isFinite(elapsed) && data.current_watts != null) {
     if (liveHistory.length && elapsed < liveHistory.at(-1).elapsed) liveHistory = [];
     if (!liveHistory.length || elapsed > liveHistory.at(-1).elapsed) liveHistory.push({elapsed, watts: Number(data.current_watts), cadence: Number(data.current_cadence)});
-    if (liveHistory.length > 1800) liveHistory.shift();
+    if (liveHistory.length > 3600) liveHistory = liveHistory.filter((_,index)=>index%2===0||index===liveHistory.length-1);
   }
   document.querySelector("#live-power").textContent = liveNumber(data.current_watts, "W");
   document.querySelector("#live-target").textContent = liveNumber(data.target_watts, "W");

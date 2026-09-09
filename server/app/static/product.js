@@ -137,7 +137,7 @@ function openPlan(plan) {
   heading.append(title,button('Schließen',()=>dialog.close()));dialog.append(heading);
   dialog.append(node('p',new Date(plan.payload.date+'T12:00:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})));
   const workout=active('workout').find(r=>r.id===plan.payload.workout_id),actions=node('div',undefined,'detail-actions');
-  if(workout){dialog.append(workoutPreview(workout.payload,active('profile')[0]?.payload.ftp||250));actions.append(primaryButton('Training vorbereiten',()=>{dialog.close();openWorkout(workout);}));}
+  if(workout){dialog.append(workoutPreview(workout.payload,active('profile')[0]?.payload.ftp||250));actions.append(primaryButton('Training vorbereiten',()=>{dialog.close();openWorkout(workout,plan.id);}));}
   else dialog.append(node('p','Dieses Workout ist nicht mehr in deiner Bibliothek.','muted'));
   actions.append(button('Aus Kalender entfernen',async()=>{
     if(!confirm('Nur diese geplante Einheit aus dem Kalender entfernen? Das Workout bleibt in deiner Bibliothek.'))return;
@@ -170,37 +170,6 @@ function renderWorkoutLibrary() {
   if(!shown.length){const empty=node('div',undefined,'empty');empty.append(node('h2',all.length?'Kein Treffer. Noch ein Versuch?':'Platz für dein erstes Workout.'),node('p',all.length?'Ändere die Suche oder wähle eine andere Kategorie.':'Importiere eine JSON- oder ZWO-Datei und lege los.'));list.append(empty);}
 }
 
-function renderOverview() {
-  const sessions=active('session').sort((a,b)=>b.payload.timestamp.localeCompare(a.payload.timestamp));
-  const weekStart=new Date(); weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));
-  const weekly=sessions.filter(r=>new Date(r.payload.timestamp)>=weekStart);
-  const minutes=Math.round(weekly.reduce((n,r)=>n+(r.payload.duration_sec||0),0)/60);
-  const summary=$('#home-summary'); summary.replaceChildren();
-  for(const [label,value,detail] of [['Diese Woche',weekly.length,'gefahrene Einheiten'],['Trainingszeit',minutes+' min','seit Montag'],['Deine FTP',(active('profile')[0]?.payload.ftp??'–')+' W','persönliche Leistungsschwelle']]) {
-    const item=node('article',undefined,'summary-card');item.append(node('span',label),node('strong',String(value)),node('small',detail));summary.append(item);
-  }
-  const next=active('plan').filter(r=>r.payload.date>=localDate()).sort((a,b)=>a.payload.date.localeCompare(b.payload.date))[0];
-  const hero=$('#next-workout'); hero.replaceChildren();
-  hero.append(node('p',next?'ALS NÄCHSTES':'DEIN NÄCHSTER SCHRITT','eyebrow'));
-  if(next) {
-    const workout=active('workout').find(r=>r.id===next.payload.workout_id);
-    hero.append(node('h2',next.payload.workout_name),node('p',new Date(next.payload.date+'T12:00:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'}),'hero-date'));
-    if(workout){hero.append(workoutPreview(workout.payload,active('profile')[0]?.payload.ftp||250),primaryButton('Training vorbereiten',()=>openWorkout(workout)));}
-    else hero.append(button('Plan im Kalender ansehen',()=>navigate('calendar')));
-  } else {
-    hero.append(node('h2','Zeit für deine nächste Einheit.'),node('p','Entdecke deine Workouts oder plane schon jetzt dein nächstes Training.'));
-    hero.append(primaryButton('Workouts entdecken',()=>navigate('workout')));
-  }
-  const recent=$('#recent-sessions');recent.replaceChildren();
-  if(!sessions.length)recent.append(node('p','Deine erste Einheit wartet auf dich. Nach dem Training findest du hier deinen Verlauf.','empty'));
-  for(const record of sessions.slice(0,3)) {
-    const row=node('article',undefined,'recent-row'), info=node('div'); info.append(node('strong',record.payload.workout_name),node('small',new Date(record.payload.timestamp).toLocaleDateString('de-AT',{day:'numeric',month:'long'})+' · '+Math.round(record.payload.duration_sec/60)+' min'));
-    row.append(info,button('Verlauf ansehen →',()=>showSession(record)));recent.append(row);
-  }
-  const profile=active('profile')[0]?.payload;
-  if(profile)$('#email').textContent=profile.name||user?.email||'';
-  renderSetupStatus();
-}
 
 function renderSetupStatus() {
   const host=$('#setup-status');host.replaceChildren();
@@ -210,11 +179,12 @@ function renderSetupStatus() {
   if(preparedWorkout && $('#workout-detail').open) {
     const ready=connectorConnected&&liveData.trainer_connected, busy=['running','paused','waiting_for_pedal'].includes(liveData.state);
     $('#workout-readiness').textContent=!connectorConnected?'Öffne CADOS Connector auf deinem Computer. Du kannst dieses Workout schon jetzt planen.':!liveData.trainer_connected?'Verbinde deinen eingeschalteten Trainer, um zu starten.':busy?'Ein Training ist bereits aktiv. Du kannst in die Trainingsansicht zurückkehren.':'Alles bereit. Dein Trainer ist verbunden.';
-    $('#prepare-start').disabled=!ready||busy;$('#prepare-connect').hidden=!connectorConnected||!!liveData.trainer_connected;
+    $('#prepare-start').disabled=!ready||busy||pendingStart;$('#prepare-connect').hidden=!connectorConnected||!!liveData.trainer_connected;
   }
 }
 
-function openWorkout(record) {
+function openWorkout(record,planId=null) {
+  selectedPlanId=planId;
   preparedWorkout=record;const p=record.payload,content=$('#workout-detail-content');content.replaceChildren();
   $('#workout-detail-title').textContent=p.name;
   content.append(node('p',(p.category||'Workout')+' · '+durationOf(p)+' min','detail-meta'),node('p',p.description||'Dein strukturiertes Training.'),workoutPreview(p,active('profile')[0]?.payload.ftp||250));
@@ -229,7 +199,7 @@ $('#close-workout-detail').onclick=()=>$('#workout-detail').close();
 $('#prepare-plan').onclick=()=>planWorkout(preparedWorkout);
 $('#prepare-connect').onclick=()=>$('#connector-connect').click();
 $('#prepare-start').onclick=()=>{
-  if(!connectorConnected||!liveData.trainer_connected)return;
+  if(!connectorConnected||!liveData.trainer_connected||pendingStart)return;
   try{$('#live-erg').value=$('#prepare-erg').value;startOnMac(preparedWorkout);$('#workout-detail').close();}
   catch(error){notice(error.message,true);}
 };
@@ -238,10 +208,10 @@ $('#setup-open').onclick=()=>navigate('live');$('#all-sessions').onclick=()=>nav
 const productLiveBase=renderLive;
 renderLive=function(){
   productLiveBase();renderSetupStatus();
-  const banner=$('#connector-download');if(banner)banner.hidden=connectorConnected||!['home','workout'].includes(currentPage);
+  const banner=$('#connector-download');if(banner)banner.hidden=connectorConnected||connectorInstalledHere||!['home','workout'].includes(currentPage);
   const running=['running','waiting_for_pedal'].includes(liveData.state), paused=liveData.state==='paused';
   $('#live-pause').disabled=!connectorConnected||!running;
-  $('#live-resume').disabled=!connectorConnected||!paused;
+  $('#live-resume').disabled=!connectorConnected||!paused||!liveData.trainer_connected;
   $('#live-stop').disabled=!connectorConnected||!(running||paused);
   $('#live-erg').disabled=!connectorConnected;
   $('#live-state').textContent=({idle:'Bereit',ready:'Bereit',running:'Training läuft',paused:'Pausiert',waiting_for_pedal:'Bereit zum Losfahren',stopped:'Beendet',completed:'Geschafft'})[liveData.state]||'Bereit';
@@ -249,7 +219,7 @@ renderLive=function(){
 const productShowDashboardBase=showDashboard;
 showDashboard=function(){productShowDashboardBase();navigate('home');};
 const productShowLoginBase=showLogin;
-showLogin=function(){productShowLoginBase();liveData={};connectorVersion='';liveWorkout=null;liveHistory=[];preparedWorkout=null;document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());};
+showLogin=function(){productShowLoginBase();liveData={};connectorVersion='';liveWorkout=null;liveHistory=[];preparedWorkout=null;serverConnected=false;lastTelemetryAt=0;selectedPlanId=null;pendingStart=false;pendingReview=null;reviewAttempt=0;document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());};
 
 const productNoticeBase=notice;let noticeTimer;
 notice=function(message,error=false){
@@ -263,5 +233,3 @@ for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener(
 $('#plan-form').elements.date.value=localDate();
 $('#plan-form').elements.date.min=localDate();
 $('#previous-month').setAttribute('aria-label','Vorheriger Monat');$('#next-month').setAttribute('aria-label','Nächster Monat');
-// Initialize only after the full interface (including live-view hooks) is ready.
-api('/auth/me').then(async account=>{user=account;showDashboard();await reload();}).catch(error=>{if(user)notice(error.message,true);});

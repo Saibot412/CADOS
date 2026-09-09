@@ -37,7 +37,7 @@ class ConnectorWindow(QMainWindow):
         self.config, self.quit_callback = config, quit_callback
         self.setWindowTitle("CADOS Connector")
         self.setWindowIcon(QIcon(str(config.paths.app_icon_path)))
-        self.setFixedSize(460, 445)
+        self.setFixedSize(510, 510)
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.setContentsMargins(24, 22, 24, 20)
@@ -73,6 +73,16 @@ class ConnectorWindow(QMainWindow):
             grid.addWidget(value, row, 1)
             self.values[key] = value
         layout.addWidget(card)
+        self.local_command = lambda name: None
+        controls = QHBoxLayout()
+        self.training_buttons = {}
+        for name, label in (("pause", "Pause"), ("resume", "Fortsetzen"), ("stop", "Training beenden")):
+            control = QPushButton(label)
+            control.setEnabled(False)
+            control.clicked.connect(lambda checked=False, command=name: self.local_command(command))
+            controls.addWidget(control)
+            self.training_buttons[name] = control
+        layout.addLayout(controls)
         layout.addStretch()
         actions = QHBoxLayout()
         web_button = QPushButton("CADOS im Browser öffnen")
@@ -96,6 +106,7 @@ class ConnectorWindow(QMainWindow):
             QLabel#value { color: #19363e; font-weight: 600; }
             QPushButton { background: #137c73; color: white; border: 0; border-radius: 8px; padding: 9px 13px; font-weight: 600; }
             QPushButton#secondary { background: #e2ece9; color: #245057; }
+            QPushButton:disabled { background: #e4eae7; color: #8a9790; }
             QPushButton:hover { background: #0f6a63; }
             QPushButton#secondary:hover { background: #d2e1dd; }
         """)
@@ -115,12 +126,16 @@ class ConnectorWindow(QMainWindow):
         self.connection.style().polish(self.connection)
         if data.get("auto_close"):
             QTimer.singleShot(1500, self.quit_callback)
-        if not connected:
+        state = data.get("state")
+        if state is None:
             return
+        self.training_buttons["pause"].setEnabled(state in {"running", "waiting_for_pedal"})
+        self.training_buttons["resume"].setEnabled(state == "paused" and bool(data.get("trainer_connected")))
+        self.training_buttons["stop"].setEnabled(state in {"running", "waiting_for_pedal", "paused"})
         self.values["trainer"].setText(str(data.get("trainer_name") or "Nicht verbunden") if data.get("trainer_connected") else "Nicht verbunden")
         self.values["hr"].setText(str(data.get("hr_name") or "Nicht verbunden") if data.get("hr_connected") else "Nicht verbunden")
         self.values["workout"].setText(str(data.get("workout_name") or "Kein Training aktiv"))
-        self.values["state"].setText(str(data.get("state") or "bereit").capitalize())
+        self.values["state"].setText({"idle": "Bereit", "ready": "Bereit", "running": "Training läuft", "paused": "Pausiert", "waiting_for_pedal": "Warte auf Treten", "completed": "Abgeschlossen", "stopped": "Beendet"}.get(data.get("state"), "Bereit"))
         watts, cadence = data.get("current_watts"), data.get("current_cadence")
         self.values["power"].setText(f"{round(watts)} W" if watts is not None else "–")
         self.values["cadence"].setText(f"{round(cadence)} rpm" if cadence is not None else "–")
@@ -176,6 +191,7 @@ def run() -> int:
     tray.activated.connect(lambda reason: window.showNormal() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
     tray.show()
     service = ConnectorService(config, status_callback=bridge.changed.emit)
+    window.local_command = service.submit_local_command
 
     def run_service() -> None:
         try:

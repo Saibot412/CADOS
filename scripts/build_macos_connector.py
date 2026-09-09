@@ -54,6 +54,9 @@ def main() -> None:
         run("/usr/libexec/PlistBuddy", "-c", f"Add :{key} string {value}", str(plist))
     with plist.open('rb') as handle:
         info = plistlib.load(handle)
+    from cados import __version__
+    info['CFBundleShortVersionString'] = __version__
+    info['CFBundleVersion'] = __version__
     info['CFBundleURLTypes'] = [{
         'CFBundleURLName': 'local.cados.connector',
         'CFBundleURLSchemes': ['cados-connector'],

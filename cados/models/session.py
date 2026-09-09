@@ -18,6 +18,8 @@ class WorkoutSessionRecord:
     duration_sec: int
     status: str
     trainer_source: str
+    plan_id: str | None = None
+    perceived_exertion: int | None = None
     workout_file_name: str | None = None
     workout_payload: dict[str, Any] | None = None
     started_at: str | None = None
@@ -30,6 +32,8 @@ class WorkoutSessionRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "plan_id": self.plan_id,
+            "perceived_exertion": self.perceived_exertion,
             "started_at": self.started_at,
             "ftp_watts": self.ftp_watts,
             "workout_elapsed_sec": self.workout_elapsed_sec,
@@ -50,6 +54,8 @@ class WorkoutSessionRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "WorkoutSessionRecord":
         return cls(
+            plan_id=payload.get("plan_id"),
+            perceived_exertion=payload.get("perceived_exertion"),
             started_at=payload.get("started_at"),
             ftp_watts=int(payload["ftp_watts"]) if payload.get("ftp_watts") is not None else None,
             workout_elapsed_sec=int(payload["workout_elapsed_sec"]) if payload.get("workout_elapsed_sec") is not None else None,

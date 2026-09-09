@@ -10,6 +10,7 @@ import json
 import logging
 import ssl
 import time
+from queue import SimpleQueue
 from math import ceil
 from pathlib import Path
 from typing import Callable
@@ -39,8 +40,13 @@ class ConnectorService:
         self.engine = WorkoutEngine(self.trainer, self.hr_monitor)
         self._stopping = False
         self._last_tick = time.monotonic()
-        self._sync_needed = False
+        self._sync_needed = True
         self._next_sync_attempt = 0.0
+        self._network_connected = False
+        self._local_commands = SimpleQueue()
+        self._last_session_id = None
+        self._plan_id = None
+        self._save_generation = 0
         self._status_callback = status_callback
         self._browser_presence_known = False
         self._browser_connected = False
@@ -57,7 +63,10 @@ class ConnectorService:
     def _set_browser_connected(self, connected: bool) -> None:
         self._browser_presence_known = True
         self._browser_connected = connected
-        self._browser_absent_since = None if connected else time.monotonic()
+        if connected:
+            self._browser_absent_since = None
+        elif self._browser_absent_since is None:
+            self._browser_absent_since = time.monotonic()
 
     def _browser_idle_status(self, now: float) -> dict[str, object]:
         if not self._browser_presence_known or self._browser_connected:
@@ -108,6 +117,8 @@ class ConnectorService:
         try:
             if name == "connect":
                 await asyncio.to_thread(self._connect_devices)
+            elif name == "snapshot":
+                await send(self._recovery())
             elif name == "start":
                 if not self.trainer.ready_for_workout():
                     raise RuntimeError("Der Trainer ist noch nicht verbunden. Bitte zuerst verbinden.")
@@ -116,10 +127,15 @@ class ConnectorService:
                     raise ValueError("Das Workout fehlt.")
                 source_name = Path(str(payload.get("source_name") or "browser-workout.json")).name
                 workout = self.catalog.load_payload(payload, Path("browser") / source_name)
-                self.engine.set_profile(self._active_profile())
+                from cados.models.profile import UserProfile
+                profile = UserProfile.from_dict(command["profile"]) if command.get("profile") else self._active_profile()
+                self.engine.set_profile(profile)
                 self.engine.set_adaptive_erg(bool(command.get("adaptive_erg")))
-                self.engine.load_workout(workout, ftp_watts=(self._active_profile().ftp_watts if self._active_profile() else None))
+                self.engine.load_workout(workout, ftp_watts=(profile.ftp_watts if profile else None))
+                self._plan_id = command.get("plan_id")
+                self._last_session_id = None
                 self.engine.start()
+                await send(self._recovery())
             elif name == "pause":
                 self.engine.pause()
             elif name == "resume":
@@ -140,7 +156,10 @@ class ConnectorService:
         session = self.engine.pending_session
         if session is None:
             return
+        session.plan_id = self._plan_id
         self.store.save_session(session)
+        self._last_session_id = session.id
+        self._save_generation += 1
         self.engine.acknowledge_session(session.id)
         self._sync_needed = True
 
@@ -152,7 +171,6 @@ class ConnectorService:
 
         client = WorkoutLibraryClient(self.config.workout_library_url, self.config.workout_library_token)
         AccountSync(self.store, client, self.config).run()
-        self._sync_needed = False
 
     def _telemetry(self) -> dict:
         snapshot = self.engine.snapshot()
@@ -162,6 +180,11 @@ class ConnectorService:
             "type": "telemetry",
             "payload": {
                 "state": snapshot.state,
+                "started_at": self.engine.started_at,
+                "auto_paused": snapshot.auto_paused,
+                "session_id": self._last_session_id,
+                "sync_pending": self._sync_needed,
+                "ftp_watts": self.engine.workout.ftp_watts if self.engine.workout else None,
                 "workout_name": snapshot.workout_name,
                 "elapsed_sec": snapshot.elapsed_sec,
                 "remaining_sec": snapshot.remaining_sec,
@@ -181,84 +204,122 @@ class ConnectorService:
             },
         }
 
-    async def run(self) -> None:
-        if not self.configured:
-            self._report_status(connected=False, error="Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
-            raise RuntimeError("Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
-        try:
-            import websockets
-            import certifi
-        except ImportError as exc:  # pragma: no cover - handled by packaged dependency
-            raise RuntimeError("Der CADOS Connector benötigt die Netzwerk-Abhängigkeiten.") from exc
+    def submit_local_command(self, name: str) -> None:
+        if name in {"pause", "resume", "stop"}:
+            self._local_commands.put({"name": name})
 
-        # The packaged app must not depend on the macOS system certificate store:
-        # on some Macs it is unavailable to embedded Python.  certifi retains
-        # regular certificate and hostname validation using Mozilla's CA roots.
+    def _recovery(self) -> dict:
+        samples = self.engine.metrics.samples
+        step = max(1, ceil(len(samples) / 1800))
+        shown = samples[::step]
+        if samples and (not shown or shown[-1] is not samples[-1]):
+            shown = [*shown, samples[-1]]
+        return {"type": "recovery", "payload": {
+            "workout": self.engine.workout_template.to_dict() if self.engine.workout_template else None,
+            "telemetry": self._telemetry()["payload"],
+            "history": [{"elapsed": item["workout_elapsed_sec"] + item["duration_sec"],
+                         "watts": item["watts"], "cadence": item["cadence"]} for item in shown],
+        }}
+
+    async def _local_loop(self) -> None:
+        # Control, timekeeping and saving never wait for the network or device scans.
+        self._last_tick = time.monotonic()
+        while not self._stopping:
+            now = time.monotonic()
+            self.engine.tick(now - self._last_tick)  # Preserve suspend gaps for the engine's auto-pause.
+            self._last_tick = now
+            async def report(message):
+                self._report_status(error=message.get("message", ""))
+            while not self._local_commands.empty():
+                await self._handle_command(self._local_commands.get_nowait(), report)
+            self._save_pending_session()
+            self._report_status(
+                connected=self._network_connected,
+                message="Mit CADOS verbunden" if self._network_connected else "Server nicht erreichbar. Training und Bedienung bleiben lokal aktiv.",
+                **self._browser_idle_status(now), **self._telemetry()["payload"],
+            )
+            if self._should_auto_close(now):
+                self._report_status(auto_close=True, message="Webseite seit 10 Minuten getrennt. Connector wird beendet.")
+                self._stopping = True
+            await asyncio.sleep(0.2)
+
+    async def _sync_loop(self) -> None:
+        while not self._stopping:
+            if self._sync_needed and time.monotonic() >= self._next_sync_attempt:
+                generation = self._save_generation
+                try:
+                    await asyncio.to_thread(self._sync_completed_data)
+                    self._sync_needed = generation != self._save_generation
+                except Exception as exc:
+                    logger.info("Lokal gespeichert; Synchronisierung wird wiederholt: %s", exc)
+                    self._next_sync_attempt = time.monotonic() + 30
+            await asyncio.sleep(1)
+
+    async def _network_loop(self) -> None:
+        import websockets
+        import certifi
         tls_context = ssl.create_default_context(cafile=certifi.where())
-
-        async def send(socket, message: dict) -> None:
-            await socket.send(json.dumps(message, separators=(",", ":")))
-
         while not self._stopping:
             try:
                 async with websockets.connect(
                     self.websocket_url,
                     additional_headers={"Authorization": "Bearer " + self.config.workout_library_token},
-                    ping_interval=20, ping_timeout=20,
+                    ping_interval=20, ping_timeout=20, open_timeout=10,
                     ssl=tls_context if self.websocket_url.startswith("wss://") else None,
                 ) as socket:
-                    self._report_status(connected=True, message="Mit CADOS verbunden")
-                    await send(socket, {
-                        "type": "status", "message": "CADOS Connector bereit", "version": __version__,
-                    })
-                    receiver = asyncio.create_task(socket.recv())
-                    last_publish = 0.0
-                    self._last_tick = time.monotonic()
-                    while not self._stopping:
-                        now = time.monotonic()
-                        if self._should_auto_close(now):
-                            self._report_status(
-                                connected=True, auto_close=True,
-                                message="CADOS-Webseite seit 10 Minuten nicht verbunden. Connector wird beendet.",
-                            )
-                            self._stopping = True
-                            continue
-                        self.engine.tick(min(1.0, now - self._last_tick))
-                        self._last_tick = now
-                        self._save_pending_session()
-                        if self._sync_needed and now >= self._next_sync_attempt:
-                            try:
-                                await asyncio.to_thread(self._sync_completed_data)
-                            except Exception as exc:
-                                logger.info("Training wird bei der nächsten Verbindung synchronisiert: %s", exc)
-                                self._next_sync_attempt = now + 30
-                        if now - last_publish >= self.PUBLISH_INTERVAL_SEC:
-                            telemetry = self._telemetry()
-                            self._report_status(connected=True, **self._browser_idle_status(now), **telemetry["payload"])
-                            await send(socket, telemetry)
-                            last_publish = now
-                        done, _ = await asyncio.wait({receiver}, timeout=0.2)
-                        if receiver in done:
-                            message = json.loads(receiver.result())
-                            if isinstance(message, dict) and message.get("type") == "browser":
+                    self._network_connected = True
+                    async def send(message):
+                        await socket.send(json.dumps(message, separators=(",", ":")))
+                    await send({"type": "status", "message": "CADOS Connector bereit", "version": __version__})
+                    await send(self._recovery())
+                    async def publish():
+                        while not self._stopping:
+                            await send(self._telemetry())
+                            await asyncio.sleep(self.PUBLISH_INTERVAL_SEC)
+                    publisher = asyncio.create_task(publish())
+                    try:
+                        async for raw in socket:
+                            message = json.loads(raw)
+                            if not isinstance(message, dict):
+                                continue
+                            if message.get("type") == "browser":
                                 self._set_browser_connected(bool(message.get("connected")))
-                            elif isinstance(message, dict):
-                                await self._handle_command(message, lambda item: send(socket, item))
-                            receiver = asyncio.create_task(socket.recv())
-                    receiver.cancel()
+                                if message.get("connected"):
+                                    await send(self._recovery())
+                            else:
+                                await self._handle_command(message, send)
+                    finally:
+                        publisher.cancel()
+                        await asyncio.gather(publisher, return_exceptions=True)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("Connector ist vorübergehend nicht mit dem Server verbunden: %s", exc)
-                self._report_status(connected=False, error=f"Verbindung wird erneut versucht: {exc}")
-                await asyncio.sleep(3)
-        self._save_pending_session()
+                logger.warning("Serververbindung getrennt; lokale Steuerung läuft weiter: %s", exc)
+            finally:
+                self._network_connected = False
+                self._set_browser_connected(False)
+            await asyncio.sleep(3)
+
+    async def run(self) -> None:
+        if not self.configured:
+            raise RuntimeError("Bitte zuerst einmal in der CADOS-Desktop-App anmelden.")
+        tasks = [asyncio.create_task(loop()) for loop in (self._local_loop, self._network_loop, self._sync_loop)]
+        try:
+            # Local-loop completion or failure must also shut down the network tasks.
+            await tasks[0]
+        finally:
+            self._stopping = True
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self.engine.stop()
+            self._save_pending_session()
+            self.trainer.close()
+            self.hr_monitor.close()
 
     def close(self) -> None:
+        # Called by Qt's thread; engine and Bluetooth cleanup belong to the worker.
         self._stopping = True
-        self._save_pending_session()
-        self.trainer.close()
-        self.hr_monitor.close()
 
 
 def run() -> int:
