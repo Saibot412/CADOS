@@ -76,7 +76,10 @@ function render(){
  renderCalendar();
 }
 async function save(record){await post('/sync',{changes:[record]});await reload();notice('Gespeichert. Deine Änderungen sind mit deinem Konto synchronisiert.');}
-async function remove(r){if(confirm('„'+r.payload.name+'“ löschen? Bereits gefahrene Trainings bleiben erhalten.'))await save({...r,deleted:true});}
+async function remove(r){
+ const message=r.shared?'„'+r.payload.name+'“ für alle aus der Workout-Bibliothek entfernen? Bereits gefahrene Trainings bleiben erhalten.':'„'+r.payload.name+'“ löschen? Bereits gefahrene Trainings bleiben erhalten.';
+ if(confirm(message)){await save({...r,deleted:true});notice(r.shared?'Veröffentlichung aus der Bibliothek entfernt.':'Workout gelöscht.');}
+}
 async function copy(r){await save({...r,id:crypto.randomUUID(),revision:0,shared:!!(user.admin&&$('#share').checked),payload:{...r.payload,name:r.payload.name+' (Kopie)',source_name:crypto.randomUUID()+'.json'}});}
 function download(r){const blob=new Blob([JSON.stringify(r.payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=r.payload.source_name||'workout.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function field(parent,label,key,value,type='text'){const l=node('label',label),input=node(type==='textarea'?'textarea':'input');if(type!=='textarea')input.type=type;input.name=key;input.value=value??'';l.append(input);parent.append(l);return input;}

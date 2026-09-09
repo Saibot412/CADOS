@@ -156,7 +156,11 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                     payload = WorkoutLoader(path.parent).load_path(path).to_dict()
                     payload["source_name"] = path.name
                     connection.execute(records.insert().values(id=identifier, owner=None, kind="workout",
-                        revision=1, deleted=False, payload=payload))
+                        revision=1, deleted=False, payload=payload, publisher={"name": "CADOS", "user_id": None}))
+                else:
+                    # These deterministic IDs identify the shipped library, not user publications.
+                    connection.execute(records.update().where(records.c.id == identifier, records.c.publisher.is_(None)).values(
+                        publisher={"name": "CADOS", "user_id": None}, revision=records.c.revision + 1))
         yield
         engine.dispose()
 
@@ -392,7 +396,8 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
 
     def serialize(row):
         return {"id": row["id"], "kind": row["kind"], "revision": row["revision"],
-                "deleted": row["deleted"], "shared": row["owner"] is None, "payload": row["payload"]}
+                "deleted": row["deleted"], "shared": row["owner"] is None, "payload": row["payload"],
+                "publisher": row["publisher"]}
 
     @app.get("/api/v1/sync")
     def snapshot(user=Depends(current_user)):
@@ -429,10 +434,17 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                         connection.execute(records.update().where(records.c.id == change.id).values(
                             revision=row["revision"]+1, payload=payload, deleted=change.deleted))
                     else:
+                        publisher = None
+                        if change.shared:
+                            profiles = connection.execute(sa.select(records.c.payload).where(
+                                records.c.owner == user["id"], records.c.kind == "profile", records.c.deleted.is_(False)
+                            )).scalars().all()
+                            profile = max(profiles, key=lambda item: str(item.get("updated_at", "")), default={})
+                            publisher = {"user_id": user["id"], "name": profile.get("name") or "Administrator"}
                         if change.revision != 0:
                             raise HTTPException(409, "Datensatz fehlt. Bitte synchronisieren.")
                         connection.execute(records.insert().values(id=change.id, kind=change.kind, owner=owner,
-                            revision=1, payload=payload, deleted=change.deleted))
+                            revision=1, payload=payload, deleted=change.deleted, publisher=publisher))
                     saved = connection.execute(sa.select(records).where(records.c.id == change.id)).mappings().one()
                     result.append(serialize(saved))
         except IntegrityError as exc:

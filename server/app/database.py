@@ -19,7 +19,8 @@ records = sa.Table("cados_sync_records", metadata,
     sa.Column("kind", sa.String(16), nullable=False),
     sa.Column("revision", sa.Integer, nullable=False),
     sa.Column("deleted", sa.Boolean, nullable=False, default=False),
-    sa.Column("payload", json_type, nullable=False))
+    sa.Column("payload", json_type, nullable=False),
+    sa.Column("publisher", json_type, nullable=True))
 versions = sa.Table("cados_schema_versions", metadata,
     sa.Column("version", sa.Integer, primary_key=True))
 
@@ -29,10 +30,14 @@ def migrate(engine):
             connection.execute(sa.text("SELECT pg_advisory_xact_lock(73461209)"))
         metadata.create_all(connection)
         latest = connection.execute(sa.select(sa.func.max(versions.c.version))).scalar() or 0
-        if latest > 2:
+        if latest > 3:
             raise RuntimeError("CADOS database requires a newer server version")
-        if latest == 0:
-            connection.execute(versions.insert().values(version=2))
-        elif latest == 1:
+        if latest == 1:
             connection.execute(sa.text("ALTER TABLE cados_users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE"))
-            connection.execute(versions.insert().values(version=2))
+        if latest < 3:
+            # create_all also creates missing tables in older/minimal installations.
+            columns = {column["name"] for column in sa.inspect(connection).get_columns("cados_sync_records")}
+            if "publisher" not in columns:
+                column_type = "JSONB" if engine.dialect.name == "postgresql" else "JSON"
+                connection.execute(sa.text(f"ALTER TABLE cados_sync_records ADD COLUMN publisher {column_type}"))
+            connection.execute(versions.insert().values(version=3))

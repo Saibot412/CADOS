@@ -145,6 +145,10 @@ function openPlan(plan) {
   }));dialog.append(actions);dialog.showModal();
 }
 
+function workoutPublisher(record){
+  return record.shared ? (record.publisher?.name ? 'Veröffentlicht von '+record.publisher.name : 'Veröffentlicht · Name nicht erfasst') : 'Privates Workout';
+}
+
 function renderWorkoutLibrary() {
   const all = active('workout'), categories = [...new Set(all.map(r=>r.payload.category||'Workout'))].sort();
   if (!categories.includes(selectedCategory)) selectedCategory = '';
@@ -162,10 +166,15 @@ function renderWorkoutLibrary() {
     const p=record.payload, card=node('article',undefined,'card workout-card'), meta=node('div',undefined,'workout-meta');
     meta.append(node('span',p.category||'Workout','tag'),node('span',record.shared?'Bibliothek':'Privat','ownership'));
     const duration=node('div',undefined,'workout-duration'); duration.append(node('strong',String(durationOf(p))),node('span',' min'));
-    card.append(meta,node('h2',p.name),duration,node('p',p.description||'Dein strukturiertes Training.','workout-description'),workoutPreview(p,active('profile')[0]?.payload.ftp||250));
+    card.append(meta,node('h2',p.name),node('p',workoutPublisher(record),'workout-publisher'),duration,node('p',p.description||'Dein strukturiertes Training.','workout-description'),workoutPreview(p,active('profile')[0]?.payload.ftp||250));
     const actions=node('div',undefined,'actions');
     actions.append(primaryButton('Training vorbereiten',()=>openWorkout(record)),button('Planen',()=>planWorkout(record)));
-    card.append(actions); list.append(card);
+    card.append(actions);
+    if(user.admin&&record.shared){
+      const removeButton=button('Veröffentlichung löschen',()=>remove(record));
+      removeButton.className='workout-delete quiet';removeButton.setAttribute('aria-label','Veröffentlichung löschen: '+p.name);card.append(removeButton);
+    }
+    list.append(card);
   }
   if(!shown.length){const empty=node('div',undefined,'empty');empty.append(node('h2',all.length?'Kein Treffer. Noch ein Versuch?':'Platz für dein erstes Workout.'),node('p',all.length?'Ändere die Suche oder wähle eine andere Kategorie.':'Importiere eine JSON- oder ZWO-Datei und lege los.'));list.append(empty);}
 }
@@ -187,6 +196,7 @@ function openWorkout(record,planId=null) {
   selectedPlanId=planId;
   preparedWorkout=record;const p=record.payload,content=$('#workout-detail-content');content.replaceChildren();
   $('#workout-detail-title').textContent=p.name;
+  content.append(node('p',workoutPublisher(record),'workout-publisher'));
   content.append(node('p',(p.category||'Workout')+' · '+durationOf(p)+' min','detail-meta'),node('p',p.description||'Dein strukturiertes Training.'),workoutPreview(p,active('profile')[0]?.payload.ftp||250));
   $('#prepare-erg').value=$('#live-erg').value;
   const manage=$('#workout-manage');manage.replaceChildren();

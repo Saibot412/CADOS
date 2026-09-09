@@ -107,6 +107,33 @@ class ServerApiTests(unittest.TestCase):
         result=self.client.get("/api/v1/sync").json()["records"]
         self.assertTrue(next(r for r in result if r["id"]==record["id"])["deleted"])
 
+    def test_publisher_is_server_owned_and_admin_can_delete_shared_workouts(self):
+        profile = self.change()
+        profile["payload"]["name"] = "Tobias"
+        self.assertEqual(self.save(profile).status_code, 200)
+        account = self.login()["user"]
+        change = {"id": str(uuid4()), "kind": "workout", "revision": 0, "shared": True,
+                  "publisher": {"name": "Forged", "user_id": "wrong"},
+                  "payload": {"name": "Published", "blocks": [{"type": "steady", "duration_sec": 60, "target_watts": 200}]}}
+        response = self.save(change)
+        self.assertEqual(response.status_code, 200, response.text)
+        saved = response.json()["records"][0]
+        self.assertEqual(saved["publisher"], {"name": "Tobias", "user_id": account["id"]})
+        modified = {**saved, "publisher": {"name": "Changed"}, "payload": {**saved["payload"], "name": "Edited"}}
+        saved = self.save(modified).json()["records"][0]
+        self.assertEqual(saved["publisher"]["name"], "Tobias")
+        private_copy = {**saved, "id": str(uuid4()), "revision": 0, "shared": False}
+        self.assertIsNone(self.save(private_copy).json()["records"][0]["publisher"])
+        self.client.post("/api/v1/users", json={"email": "friend@example.test", "password": "test-password-123"})
+        self.login("friend@example.test")
+        visible = self.client.get("/api/v1/sync").json()["records"]
+        self.assertEqual(next(r for r in visible if r["id"] == saved["id"])["publisher"]["name"], "Tobias")
+        self.assertEqual(self.save({**saved, "deleted": True}).status_code, 403)
+        self.assertEqual(self.save({**saved, "shared": False, "deleted": True}).status_code, 403)
+        self.login()
+        self.assertEqual(self.save({**saved, "deleted": True}).status_code, 200)
+        self.assertTrue(next(r for r in self.client.get("/api/v1/sync").json()["records"] if r["id"] == saved["id"])["deleted"])
+
     def test_batch_is_atomic(self):
         record=self.change()
         bad=self.change();bad["kind"]="unknown"
