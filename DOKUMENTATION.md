@@ -10,17 +10,35 @@ Die frühere vollständige Desktop-App wurde entfernt.
 Den Connector auf der CADOS-Webseite herunterladen, das DMG öffnen und
 **CADOS Connector.app** nach **Programme** ziehen. Die installierbare App enthält
 Python und alle Abhängigkeiten. Den Connector starten und Bluetooth erlauben.
-Bei der ersten Verwendung mit demselben Konto wie im Browser anmelden.
+Bei der ersten Verwendung **Im Browser anmelden** wählen und die Kopplung auf der
+Webseite bestätigen. Es wird kein zweites Passwort im Connector eingegeben.
 Bestehende gespeicherte Anmeldungen werden übernommen; Passwörter werden nicht gespeichert.
 Über das Connector-Menü in der Menüleiste lässt sich **Anmeldung ändern …** wählen,
 sobald kein Training läuft. Neue Konten werden auf der Webseite registriert.
+
+## Updates auf macOS
+
+Der Connector kann außerhalb eines Trainings mit einem Klick nach Updates suchen,
+das DMG herunterladen, die SHA-256-Prüfsumme prüfen und die installierte App ersetzen.
+Bei fehlenden Schreibrechten wird das DMG zur manuellen Installation geöffnet.
+Updates sind während eines Trainings oder einer noch offenen Wiederherstellung gesperrt.
+
+Die App ist ad-hoc signiert, aber ohne Apple-Developer-Konto nicht notarisiert.
+Bei einer macOS-Warnung: **Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen**.
+Der Installer entfernt keine macOS-Sicherheitskennzeichnungen. Auch bei Updates kann
+macOS erneut eine Freigabe verlangen.
 
 ## Training und Speicherung
 
 Workouts im Browser auswählen, Trainer verbinden und das Training starten.
 Normales und adaptives ERG sind verfügbar; FTP-Rampentests verwenden normales ERG.
 Während eines Internetausfalls läuft ein bereits gestartetes Training lokal weiter.
-Pause, Fortsetzen und Beenden sind dann auch im Connector-Fenster erreichbar.
+Die geöffnete Webseite verbindet sich zusätzlich direkt mit dem Connector auf
+`127.0.0.1:48732`. Erlaube bei Nachfrage den lokalen Netzwerkzugriff im Browser.
+Bei einer blockierten Direktverbindung öffnet **Lokale Trainingsansicht öffnen**
+im Connector eine vollständig lokale Seite mit Messwerten, Diagramm und Bedienung.
+Diese lokale Seite bleibt auch nach einem Neuladen ohne Internet nutzbar.
+Pause, Fortsetzen und Beenden bleiben zudem im Connector-Fenster erreichbar.
 Für Anmeldung und den Start über die Webseite ist eine Serververbindung erforderlich.
 
 Abgeschlossene Trainings werden lokal in SQLite gespeichert und mit dem Server
@@ -32,14 +50,17 @@ Workouts und synchronisierte Trainings in PostgreSQL.
 
 Nach zehn Minuten ohne Webseite schließt sich der Connector automatisch,
 außer während eines laufenden Trainings. Das Fenster zeigt den Countdown.
-Ein erzwungenes Prozessende kann eine noch nicht gespeicherte Session verlieren.
+Laufende Einheiten werden alle fünf Sekunden lokal gesichert. Nach einem Absturz
+wird Wiederherstellen oder Speichern angeboten. Beim Wiederherstellen bleibt das
+Training pausiert, bis du bewusst fortsetzt. Die letzten Sekunden seit der letzten
+erfolgreichen Sicherung können fehlen.
 
 ## Projektstruktur
 
 - `server/app/static/`: Web-Oberfläche und Trainingsdiagramme.
 - `server/app/`: API, Anmeldung, PostgreSQL und Datenbankmigrationen.
 - `cados/connector_app.py`: kleines Connector-Fenster und Menüleiste.
-- `cados/connector_login.py`: eigenständige Connector-Anmeldung.
+- `cados/connector_pairing.py`: Anmeldung durch einmalige Bestätigung im Browser.
 - `cados/connector.py`: lokale Trainingssteuerung und Serververbindung.
 - `cados/core/`, `cados/models/`, `cados/services/`: gemeinsam verwendete Logik,
   Bluetooth, Messwerte, Speicherung und Synchronisation.
@@ -161,3 +182,14 @@ konstante Blöcke und Rampen mit sofortiger Diagrammvorschau.
 Ungültige Dateien werden protokolliert und übersprungen. Zahlen müssen zum
 jeweiligen Feld passen; nicht endliche Werte, negative Ziele und nicht ganzzahlige
 Dauern werden abgewiesen.
+
+## Trainer, Gurte und Uhren auswählen
+
+In der Web-Übersicht **Trainer & Pulssensor auswählen** öffnen, Geräte suchen und
+Trainer sowie optionalen Pulssensor getrennt verbinden. CADOS merkt sich die Auswahl
+auf diesem Computer und versucht die Wiederverbindung. Ein Trainerwechsel während
+einer laufenden oder pausierten Einheit ist gesperrt. Ohne Internet gibt es dieselbe
+Auswahl in der lokalen Trainingsansicht des Connectors.
+
+Die unterstützten Protokolle, Hersteller-Einordnung und Grenzen stehen in
+[GERAETE_KOMPATIBILITAET.md](GERAETE_KOMPATIBILITAET.md).

@@ -5,14 +5,15 @@ import asyncio
 import logging
 import sys
 import threading
+from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QTimer, QUrl, Signal, QLockFile
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
-from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget
 
 from cados.config import AppConfig
 from cados.connector import ConnectorService
-from cados.connector_login import ConnectorLogin
+from cados.connector_pairing import ConnectorPairing
 from cados.logging_utils import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -23,11 +24,11 @@ class StatusBridge(QObject):
 
 
 class ConnectorApplication(QApplication):
-    open_requested = Signal()
+    open_requested = Signal(str)
 
     def event(self, event) -> bool:
         if event.type() == QEvent.Type.FileOpen and event.url().scheme() == 'cados-connector':
-            self.open_requested.emit()
+            self.open_requested.emit(event.url().host())
             return True
         return super().event(event)
 
@@ -38,7 +39,7 @@ class ConnectorWindow(QMainWindow):
         self.config, self.quit_callback = config, quit_callback
         self.setWindowTitle("CADOS Connector")
         self.setWindowIcon(QIcon(str(config.paths.app_icon_path)))
-        self.setFixedSize(510, 510)
+        self.setMinimumSize(550, 650)
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.setContentsMargins(24, 22, 24, 20)
@@ -65,6 +66,7 @@ class ConnectorWindow(QMainWindow):
             ("trainer", "Trainer"), ("hr", "Herzfrequenz"), ("workout", "Training"),
             ("state", "Status"), ("power", "Leistung"), ("cadence", "Kadenz"),
             ("browser", "Webseite"),
+            ("device_status", "Geräte"),
         )):
             caption = QLabel(label)
             caption.setObjectName("caption")
@@ -84,6 +86,28 @@ class ConnectorWindow(QMainWindow):
             controls.addWidget(control)
             self.training_buttons[name] = control
         layout.addLayout(controls)
+        self.recovery = QLabel()
+        self.recovery.setWordWrap(True)
+        layout.addWidget(self.recovery)
+        recovery_actions = QHBoxLayout()
+        self.recovery_buttons = []
+        for command, label in (("restore", "Einheit wiederherstellen"), ("save_recovered", "Einheit speichern")):
+            control = QPushButton(label)
+            control.clicked.connect(lambda checked=False, name=command: self.local_command(name))
+            recovery_actions.addWidget(control)
+            self.recovery_buttons.append(control)
+            control.hide()
+        layout.addLayout(recovery_actions)
+        self.local_web_button = QPushButton("Lokale Trainingsansicht öffnen")
+        self.local_web_button.clicked.connect(lambda: self.open_local())
+        layout.addWidget(self.local_web_button)
+        self.open_local = lambda: None
+        self.update_button = QPushButton("Nach Update suchen und installieren")
+        self.update_button.clicked.connect(lambda: self.local_command('update'))
+        layout.addWidget(self.update_button)
+        self.update_note = QLabel()
+        self.update_note.setWordWrap(True)
+        layout.addWidget(self.update_note)
         layout.addStretch()
         actions = QHBoxLayout()
         web_button = QPushButton("CADOS im Browser öffnen")
@@ -119,6 +143,17 @@ class ConnectorWindow(QMainWindow):
             QDesktopServices.openUrl(url)
 
     def update_status(self, data: dict) -> None:
+        if data.get('update_message'):
+            self.update_note.setText(data['update_message'])
+        if data.get('error'):
+            self.update_note.setText(data['error'])
+        if 'state' in data:
+            active = data['state'] in {'running', 'paused', 'waiting_for_pedal'}
+            self.update_button.setEnabled(not active and not data.get('updating') and not data.get('recovery_available'))
+            recovery = data.get('recovery_available')
+            self.recovery.setText(('Unterbrochene Einheit: ' + recovery['name']) if recovery else '')
+            for control in self.recovery_buttons:
+                control.setVisible(bool(recovery))
         connected = bool(data.get("connected"))
         message = str(data.get("message") or data.get("error") or "Mit CADOS verbunden")
         self.connection.setText("● " + message)
@@ -133,6 +168,8 @@ class ConnectorWindow(QMainWindow):
         self.training_buttons["pause"].setEnabled(state in {"running", "waiting_for_pedal"})
         self.training_buttons["resume"].setEnabled(state == "paused" and bool(data.get("trainer_connected")))
         self.training_buttons["stop"].setEnabled(state in {"running", "waiting_for_pedal", "paused"})
+        self.values["device_status"].setText(str(data.get("device_status") or "Auswahl in der Web- oder lokalen Trainingsansicht"))
+        self.values["device_status"].setWordWrap(True)
         self.values["trainer"].setText(str(data.get("trainer_name") or "Nicht verbunden") if data.get("trainer_connected") else "Nicht verbunden")
         self.values["hr"].setText(str(data.get("hr_name") or "Nicht verbunden") if data.get("hr_connected") else "Nicht verbunden")
         self.values["workout"].setText(str(data.get("workout_name") or "Kein Training aktiv"))
@@ -161,12 +198,17 @@ def run() -> int:
     app = ConnectorApplication(sys.argv)
     app.setApplicationName("CADOS Connector")
     app.setQuitOnLastWindowClosed(False)
-    if "--login" in sys.argv or not (config.workout_library_url and config.workout_library_token):
-        if not ConnectorLogin(config).exec():
+    instance_lock = QLockFile(str(config.paths.data_dir / 'connector.lock'))
+    if not instance_lock.tryLock(0):
+        QMessageBox.information(None, 'CADOS Connector', 'Der Connector läuft bereits. Öffne sein Fenster über das Symbol in der Menüleiste.')
+        return 0
+    if "--login" in sys.argv or any(arg.startswith('cados-connector://pair') for arg in sys.argv) or not (config.workout_library_url and config.workout_library_token):
+        if not ConnectorPairing(config).exec():
             return 0
     bridge = StatusBridge()
     service: ConnectorService | None = None
     change_login = False
+    pending_update = None
 
     def quit_connector() -> None:
         if service is not None:
@@ -179,8 +221,14 @@ def run() -> int:
         window.raise_()
         window.activateWindow()
         window.open_web()
-    app.open_requested.connect(show_connector)
+    app.open_requested.connect(lambda action: request_login() if action == "pair" else show_connector())
     bridge.changed.connect(window.update_status)
+    def receive_update(data):
+        nonlocal pending_update
+        if data.get('update_ready'):
+            pending_update = data['update_ready']
+            quit_connector()
+    bridge.changed.connect(receive_update)
     icon = QIcon(str(config.paths.app_icon_path))
     tray = QSystemTrayIcon(icon, app)
     tray.setToolTip("CADOS Connector")
@@ -208,6 +256,7 @@ def run() -> int:
     tray.show()
     service = ConnectorService(config, status_callback=bridge.changed.emit)
     window.local_command = service.submit_local_command
+    window.open_local = lambda: QDesktopServices.openUrl(QUrl(service.local.page_url))
 
     def run_service() -> None:
         try:
@@ -223,6 +272,14 @@ def run() -> int:
     exit_code = app.exec()
     service.close()
     thread.join(timeout=5)
+    if pending_update:
+        from cados.connector_update import launch_installer
+        import os
+        try:
+            launch_installer(pending_update, Path(sys.executable).parents[2], os.getpid())
+        except Exception:
+            logger.exception("Automatische Installation nicht möglich")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(pending_update['path']))
     if change_login and not thread.is_alive():
         import subprocess
         command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, "-m", "cados"]

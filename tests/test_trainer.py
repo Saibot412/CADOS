@@ -50,7 +50,8 @@ class FtmsBluetoothServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_control_subscription_disconnects_partial_connection(self):
         service = self.make_service()
         client = SimpleNamespace(is_connected=True, connect=AsyncMock(), disconnect=AsyncMock(),
-                                 start_notify=AsyncMock(side_effect=[None, RuntimeError("no indications")]))
+                                 start_notify=AsyncMock(side_effect=[None, RuntimeError("no indications")]),
+                                 services=SimpleNamespace(get_characteristic=lambda uuid: object() if uuid in {service.INDOOR_BIKE_DATA_UUID, service.CONTROL_POINT_UUID} else None))
         with patch("cados.services.trainer.BleakClient", return_value=client):
             with self.assertRaises(RuntimeError):
                 await service._connect("fake", "Fake Trainer")
@@ -104,7 +105,7 @@ class FtmsBluetoothServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class TrainerControllerTests(unittest.TestCase):
-    def test_pick_preferred_device_prefers_wahoo_and_kickr(self) -> None:
+    def test_pick_preferred_device_has_no_brand_preference(self) -> None:
         devices = [
             TrainerDevice(identifier="other", name="Elite Direto"),
             TrainerDevice(identifier="wahoo", name="Wahoo KICKR CORE"),
@@ -114,7 +115,7 @@ class TrainerControllerTests(unittest.TestCase):
 
         self.assertIsNotNone(preferred)
         assert preferred is not None
-        self.assertEqual(preferred.identifier, "wahoo")
+        self.assertEqual(preferred.identifier, "other")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import struct
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from typing import Any
 
 from cados.services.async_loop import AsyncLoopThread
+from cados.services.ble_devices import advertisement_info, HR_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +23,15 @@ HR_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
 HR_MEASUREMENT_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
 
 GARMIN_NAME_TOKENS = ("garmin", "forerunner", "fenix", "venu", "vivoactive", "enduro", "instinct", "epix")
-HR_NAME_TOKENS = (*GARMIN_NAME_TOKENS, "polar", "wahoo tickr", "coospo", "magene", "heart", "hr")
+HR_NAME_TOKENS = HR_NAMES
 
 
 @dataclass(slots=True)
 class HRDevice:
     identifier: str
     name: str
+    protocol: str = "Prüfung beim Verbinden"
+    rssi: int | None = None
 
 
 @dataclass(slots=True)
@@ -36,6 +40,7 @@ class HRSnapshot:
     connected: bool = False
     device_name: str = "Nicht verbunden"
     status_text: str = "HR-Monitor nicht verbunden"
+    data_available: bool = False
 
 
 class HRMonitorService:
@@ -46,6 +51,8 @@ class HRMonitorService:
         self._loop_thread: AsyncLoopThread | None = None
         if BleakClient and BleakScanner:
             self._loop_thread = AsyncLoopThread()
+        self._seen_devices = {}
+        self._measurement_at = None
         self._client: Any | None = None
         self._closing = False
         self._lock = threading.Lock()
@@ -68,14 +75,14 @@ class HRMonitorService:
         assert BleakScanner is not None
         found = await BleakScanner.discover(timeout=self._scan_timeout_sec, return_adv=True)
         devices: list[HRDevice] = []
+        self._seen_devices = {}
         for device, advertisement in found.values():
-            name = device.name or device.address or "BLE-Gerät"
-            uuids = {uuid.lower() for uuid in advertisement.service_uuids}
-            name_lower = name.lower()
-            looks_like_hr = any(token in name_lower for token in HR_NAME_TOKENS)
-            if HR_SERVICE_UUID in uuids or looks_like_hr:
-                devices.append(HRDevice(identifier=device.address, name=name))
-        devices.sort(key=lambda d: (0 if any(t in d.name.lower() for t in GARMIN_NAME_TOKENS) else 1, d.name.lower()))
+            name, uuids, rssi = advertisement_info(device, advertisement)
+            standard = HR_SERVICE_UUID in uuids
+            if standard or any(token in name.casefold() for token in HR_NAME_TOKENS):
+                self._seen_devices[device.address] = device
+                devices.append(HRDevice(device.address, name, "Bluetooth Herzfrequenz" if standard else "Sendemodus prüfen", rssi))
+        devices.sort(key=lambda d: (0 if d.protocol == 'Bluetooth Herzfrequenz' else 1, d.name.casefold()))
         return devices
 
     def connect(self, identifier: str, fallback_name: str | None = None) -> None:
@@ -88,11 +95,13 @@ class HRMonitorService:
         if self._closing:
             raise RuntimeError("HR-Monitor wird bereits beendet.")
         await self._disconnect()
-        client = BleakClient(identifier, disconnected_callback=self._handle_disconnect)
+        client = BleakClient(self._seen_devices.get(identifier, identifier), disconnected_callback=lambda sender: self._handle_disconnect(sender) if self._client is sender else None)
         self._client = client
         try:
             await client.connect()
-            await client.start_notify(HR_MEASUREMENT_UUID, self._handle_hr_data)
+            if not client.services.get_characteristic(HR_MEASUREMENT_UUID):
+                raise RuntimeError("Dieses Gerät sendet kein Bluetooth-Pulssignal. Bei Uhren zuerst Herzfrequenz senden / Broadcast HR aktivieren. ANT+-only und Apple Watch werden nicht direkt unterstützt.")
+            await client.start_notify(HR_MEASUREMENT_UUID, lambda sender, data: self._handle_hr_data(sender, data) if self._client is client else None)
         except BaseException:
             await self._disconnect()
             raise
@@ -109,6 +118,7 @@ class HRMonitorService:
         self._loop_thread.call(self._disconnect(), timeout=10.0)
 
     async def _disconnect(self) -> None:
+        self._measurement_at = None
         if self._client is None:
             return
         client, self._client = self._client, None
@@ -120,12 +130,13 @@ class HRMonitorService:
 
     def read_snapshot(self) -> HRSnapshot:
         with self._lock:
-            return HRSnapshot(
-                heart_rate=self._snapshot.heart_rate,
-                connected=self._snapshot.connected,
-                device_name=self._snapshot.device_name,
-                status_text=self._snapshot.status_text,
-            )
+            snapshot = replace(self._snapshot)
+            snapshot.data_available = snapshot.connected and self._measurement_at is not None and time.monotonic() - self._measurement_at <= 10
+            if not snapshot.data_available:
+                snapshot.heart_rate = 0
+                if snapshot.connected:
+                    snapshot.status_text = "Verbunden – warte auf aktuellen Puls / Hautkontakt"
+            return snapshot
 
     def close(self) -> None:
         self._closing = True
@@ -158,16 +169,25 @@ class HRMonitorService:
         except Exception as exc:
             logger.debug("HR-Daten konnten nicht geparst werden: %s", exc)
             return
-        self._set_snapshot(heart_rate=hr, connected=True, status_text="Verbunden")
+        with self._lock:
+            self._measurement_at = time.monotonic() if hr is not None else None
+            self._snapshot = replace(self._snapshot, heart_rate=hr or 0, connected=True, status_text="Verbunden")
 
 
-def parse_hr_measurement(payload: bytes) -> int:
-    """Parse a BLE Heart Rate Measurement characteristic value."""
+def parse_hr_measurement(payload: bytes) -> int | None:
+    """BLE HRS: 8/16-bit BPM, optional contact status, energy and RR intervals."""
     if len(payload) < 2:
-        return 0
+        raise ValueError("Unvollständiges Pulssignal")
     flags = payload[0]
-    if flags & 0x01:
-        # 16-bit HR value
-        return struct.unpack_from("<H", payload, 1)[0]
-    # 8-bit HR value
-    return payload[1]
+    size = 2 if flags & 1 else 1
+    if len(payload) < 1 + size:
+        raise ValueError("Unvollständiger 16-Bit-Pulswert")
+    hr = int.from_bytes(payload[1:1 + size], 'little')
+    offset = 1 + size
+    if flags & 8:
+        offset += 2
+    if len(payload) < offset or (flags & 16 and (len(payload) == offset or (len(payload) - offset) % 2)):
+        raise ValueError("Unvollständige optionale Pulsmessdaten")
+    if flags & 4 and not flags & 2:
+        return None  # Sensor explicitly reports no skin contact.
+    return hr if 0 < hr <= 250 else None

@@ -208,3 +208,24 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/static/experience.js").status_code, 200)
         self.assertEqual(self.client.get("/static/experience.css").status_code, 200)
         self.assertEqual(len(self.client.get("/api/v1/sync").json()["records"]),26)
+
+    def test_connector_pairing_is_approved_once_and_redeemed_once(self):
+        begin = self.client.post('/api/v1/connector/pair/begin', json={}).json()
+        pending = self.client.post('/api/v1/connector/pair/poll', json={'secret': begin['secret']})
+        self.assertEqual(pending.json(), {'pending': True})
+        self.assertEqual(self.client.post('/api/v1/connector/pair/approve', json={'code': begin['code']}).status_code, 200)
+        self.assertEqual(self.client.post('/api/v1/connector/pair/approve', json={'code': begin['code']}).status_code, 409)
+        result = self.client.post('/api/v1/connector/pair/poll', json={'secret': begin['secret']}).json()
+        self.assertEqual(result['user']['email'], 'admin@example.test')
+        self.assertEqual(self.client.post('/api/v1/connector/pair/poll', json={'secret': begin['secret']}).status_code, 410)
+        self.assertEqual(self.client.get('/api/v1/auth/me', headers={'Authorization': 'Bearer '+result['token']}).status_code, 200)
+
+    def test_connector_pairing_requires_login_and_rejects_expired_secrets(self):
+        import sqlalchemy as sa
+        from server.app.database import pairings
+        begin = self.client.post('/api/v1/connector/pair/begin', json={}).json()
+        self.client.cookies.clear()
+        self.assertEqual(self.client.post('/api/v1/connector/pair/approve', json={'code': begin['code']}).status_code, 401)
+        with self.app.state.engine.begin() as db:
+            db.execute(pairings.update().values(expires=0))
+        self.assertEqual(self.client.post('/api/v1/connector/pair/poll', json={'secret': begin['secret']}).status_code, 410)

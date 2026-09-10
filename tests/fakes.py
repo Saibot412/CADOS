@@ -6,7 +6,7 @@ class FakeTrainer:
     mode_label = "Test Trainer"
 
     def __init__(self):
-        self.telemetry = TrainerSnapshot(current_watts=200, cadence=90, connected=True)
+        self.telemetry = TrainerSnapshot(current_watts=200, cadence=90, connected=True, cadence_available=True, power_available=True)
         self.commands = []
         self.bluetooth = self
         self.available = True

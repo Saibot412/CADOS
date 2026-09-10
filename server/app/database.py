@@ -24,13 +24,19 @@ records = sa.Table("cados_sync_records", metadata,
 versions = sa.Table("cados_schema_versions", metadata,
     sa.Column("version", sa.Integer, primary_key=True))
 
+pairings = sa.Table("cados_connector_pairings", metadata,
+    sa.Column("code_hash", sa.String(64), primary_key=True),
+    sa.Column("secret_hash", sa.String(64), unique=True, nullable=False),
+    sa.Column("user_id", sa.String(36), nullable=True),
+    sa.Column("expires", sa.Float, nullable=False))
+
 def migrate(engine):
     with engine.begin() as connection:
         if engine.dialect.name == "postgresql":
             connection.execute(sa.text("SELECT pg_advisory_xact_lock(73461209)"))
         metadata.create_all(connection)
         latest = connection.execute(sa.select(sa.func.max(versions.c.version))).scalar() or 0
-        if latest > 3:
+        if latest > 4:
             raise RuntimeError("CADOS database requires a newer server version")
         if latest == 1:
             connection.execute(sa.text("ALTER TABLE cados_users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE"))
@@ -41,3 +47,6 @@ def migrate(engine):
                 column_type = "JSONB" if engine.dialect.name == "postgresql" else "JSON"
                 connection.execute(sa.text(f"ALTER TABLE cados_sync_records ADD COLUMN publisher {column_type}"))
             connection.execute(versions.insert().values(version=3))
+
+        if latest < 4:
+            connection.execute(versions.insert().values(version=4))

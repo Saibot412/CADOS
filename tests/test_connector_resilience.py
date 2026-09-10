@@ -129,6 +129,17 @@ class ConnectorResilienceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(hub.connectors['u'],new)
 
 
+    async def test_update_is_refused_during_training(self):
+        messages=[]
+        async def send(message):
+            messages.append(message)
+        with patch('cados.connector_update.download_update') as download:
+            await self.service._handle_command({'name':'update'},send)
+            download.assert_not_called()
+        self.assertEqual(messages[0]['type'],'error')
+        self.assertFalse(self.service._updating)
+
+
 @unittest.skipIf(validate_record is None, "Server dependencies not installed")
 class SessionFeedbackTests(unittest.TestCase):
     def test_feedback_and_plan_survive_roundtrip_and_invalid_values_are_rejected(self):

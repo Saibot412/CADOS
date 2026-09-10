@@ -47,5 +47,5 @@ class ServerMigrationTests(unittest.TestCase):
                 self.assertEqual(row["id"], "old")
                 self.assertEqual(row["revision"], 4)
                 self.assertIsNone(row["publisher"])
-                self.assertEqual(db.execute(sa.select(sa.func.max(versions.c.version))).scalar(), 3)
+                self.assertEqual(db.execute(sa.select(sa.func.max(versions.c.version))).scalar(), 4)
             engine.dispose()

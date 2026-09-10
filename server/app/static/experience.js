@@ -58,7 +58,7 @@ function renderOverview(){
  renderSetupStatus();
  const updateAvailable=connectorRelease&&connectorVersion&&compareVersion(connectorVersion,connectorRelease.version)<0;
  const setup=$('#setup-open');setup.textContent=updateAvailable?'Connector aktualisieren':connectorConnected?(liveData.trainer_connected?'Verbindung ansehen →':'Trainer verbinden'):connectorInstalledHere?'Connector starten':'Connector einrichten';
- setup.onclick=()=>{if(updateAvailable){window.open(connectorRelease.macos.url,'_blank','noopener');return;}if(!connectorConnected){if(connectorInstalledHere)location.href='cados-connector://open';else navigate('workout');}else if(!liveData.trainer_connected)$('#connector-connect').click();else navigate('live');};
+ setup.onclick=()=>{if(updateAvailable){window.requestConnectorUpdate();return;}if(!connectorConnected){if(connectorInstalledHere)location.href='cados-connector://open';else navigate('workout');}else if(!liveData.trainer_connected)$('#connector-connect').click();else navigate('live');};
 }
 $('#home-calendar').onclick=()=>navigate('calendar');
 
@@ -75,7 +75,7 @@ function acceptTelemetry(data,recovery=false){
 const experienceRenderLive=renderLive;
 renderLive=function(){
  experienceRenderLive();
- const stale=isTrainingActive()&&(!serverConnected||!connectorConnected||Date.now()-lastTelemetryAt>8000);
+ const stale=isTrainingActive()&&(!(serverConnected||localConnected)||!connectorConnected||Date.now()-lastTelemetryAt>8000);
  document.body.classList.toggle('telemetry-stale',stale);
  const detail=$('#connector-detail');
  if(stale){
@@ -100,7 +100,7 @@ async function loadCompletedSession(){
  try{
   const result=await api('/sync');if(account!==user?.id)return;
   records=result.records;const record=active('session').find(r=>r.id===id);
-  if(record){pendingReview=null;try{sessionStorage.setItem('cados.review.'+account,id);}catch{}render();document.querySelectorAll('dialog[open]').forEach(d=>d.close());showSession(record);}
+  if(record&&!isTrainingActive()&&!pendingStart){pendingReview=null;try{sessionStorage.setItem('cados.review.'+account,id);}catch{}render();document.querySelectorAll('dialog[open]').forEach(d=>d.close());showSession(record);}
  }catch{ /* Local saving is independent; retry the account snapshot after reconnect. */ }
  finally{reviewBusy=false;}
 }

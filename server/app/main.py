@@ -25,7 +25,7 @@ from cados.core.zwo_importer import parse_zwo
 from cados.models.profile import UserProfile
 from cados.models.session import WorkoutSessionRecord
 from cados.core.session_analysis import ftp_test_result, measured_max_hr
-from server.app.database import migrate, records, tokens, users
+from server.app.database import migrate, records, tokens, users, pairings
 from server.app.security import hash_password, token_hash, verify_password
 from server.app.validation import validate_workout_payload
 
@@ -197,7 +197,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
             request._body = bytes(body)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; connect-src 'self' ws://127.0.0.1:48732; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -224,6 +224,9 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
 
     def public_user(user):
         return {key: user[key] for key in ("id", "email", "admin", "active")}
+
+    from server.app.pairing import install_pairing
+    install_pairing(app, engine, current_user, public_user, public_url)
 
     def create_user(credentials: Credentials, profile=None):
         email = credentials.email.strip().casefold()
@@ -312,7 +315,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                 if not isinstance(message, dict) or message.get("type") != "command":
                     continue
                 command = message.get("command")
-                if not isinstance(command, dict) or command.get("name") not in {"connect", "start", "pause", "resume", "stop", "erg_mode", "snapshot"}:
+                if not isinstance(command, dict) or command.get("name") not in {"connect", "start", "pause", "resume", "stop", "erg_mode", "snapshot", "restore", "save_recovered", "update", "scan_devices", "select_device", "disconnect_device"}:
                     await websocket.send_json({"type": "error", "message": "Ungültiger Connector-Befehl"})
                     continue
                 if command.get("name") == "start":
@@ -339,7 +342,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         try:
             while True:
                 message = await websocket.receive_json()
-                if isinstance(message, dict) and message.get("type") in {"telemetry", "status", "error", "session", "recovery"}:
+                if isinstance(message, dict) and message.get("type") in {"telemetry", "status", "error", "session", "recovery", "devices"}:
                     await hub.broadcast(user["id"], message)
         except WebSocketDisconnect:
             pass
@@ -355,6 +358,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
         with engine.begin() as connection:
             connection.execute(users.update().where(users.c.id == user["id"]).values(password=encoded))
             connection.execute(tokens.delete().where(tokens.c.user_id == user["id"]))
+            connection.execute(pairings.delete().where(pairings.c.user_id == user["id"]))
         return {"ok": True}
 
     @app.post("/api/v1/users")
@@ -388,6 +392,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
             connection.execute(users.update().where(users.c.id == user_id).values(active=status.active))
             if not status.active:
                 connection.execute(tokens.delete().where(tokens.c.user_id == user_id))
+                connection.execute(pairings.delete().where(pairings.c.user_id == user_id))
         return {"ok": True}
 
     @app.delete("/api/v1/users/{user_id}")
@@ -401,6 +406,7 @@ def create_app(database_url=None, public_url=None, *, bootstrap=None):
                 raise HTTPException(404, "Benutzer nicht gefunden.")
             connection.execute(records.delete().where(records.c.owner == user_id))
             connection.execute(tokens.delete().where(tokens.c.user_id == user_id))
+            connection.execute(pairings.delete().where(pairings.c.user_id == user_id))
             connection.execute(users.delete().where(users.c.id == user_id))
         return {"ok": True}
 

@@ -13,6 +13,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "workout_library_url": "",
     "workout_library_token": "",
     "known_accounts": [],
+    "device_preferences": {},
 }
 
 
@@ -76,6 +77,7 @@ class AppConfig:
     workout_library_url: str
     workout_library_token: str
     known_accounts: list[dict[str, str]]
+    device_preferences: dict[str, str]
 
     @classmethod
     def load(cls, root: Path | None = None, *, data_dir: Path | None = None) -> "AppConfig":
@@ -112,6 +114,7 @@ class AppConfig:
             workout_library_url=current_url,
             workout_library_token=current_token,
             known_accounts=known_accounts,
+            device_preferences={str(k): str(v) for k, v in settings.get("device_preferences", {}).items()} if isinstance(settings.get("device_preferences"), dict) else {},
         )
 
     def save_settings(self, updates: dict[str, Any]) -> None:

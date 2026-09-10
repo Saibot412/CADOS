@@ -1,6 +1,6 @@
 "use strict";
 const $ = s => document.querySelector(s);
-let user, records = [], editing, managedUsers = [], calendarMonth = new Date().toISOString().slice(0,7), liveSocket, connectorConnected=false, liveData={}, connectorVersion='', connectorRelease;
+let user, records = [], editing, managedUsers = [], calendarMonth = new Date().toISOString().slice(0,7), liveSocket, connectorConnected=false, liveData={}, connectorVersion='', connectorRelease,localSocket=null,localConnected=false;
 const titles = {home:'Deine Übersicht',workout:'Workout-Bibliothek',live:'Live-Training',calendar:'Trainingskalender',session:'Trainingshistorie',settings:'Einstellungen',users:'Benutzerverwaltung'};
 function notice(message, error=false){$('#notice').textContent=message;$('#notice').className=error?'error':'';$('#notice').hidden=false;}
 async function api(path, options={}){
@@ -9,7 +9,7 @@ async function api(path, options={}){
   if(!response.ok){if(response.status===401)showLogin();let detail=data.detail;throw Error(typeof detail==='string'?detail:detail?.message||'Bitte Eingaben prüfen und erneut versuchen.');}return data;
 }
 const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data)});
-function showLogin(){document.body.classList.remove('signed-in','live-focus-active');user=null;liveSocket?.close();liveSocket=null;connectorConnected=false;$('#login').hidden=false;$('#dashboard').hidden=true;$('#account').hidden=true;}
+function showLogin(){window.disconnectLocal?.();document.body.classList.remove('signed-in','live-focus-active');user=null;liveSocket?.close();liveSocket=null;connectorConnected=false;$('#login').hidden=false;$('#dashboard').hidden=true;$('#account').hidden=true;}
 function showRegister(){ $('#login-form').hidden=true;$('#register-form').hidden=false;}
 function showLoginForm(){ $('#register-form').hidden=true;$('#login-form').hidden=false;}
 function showDashboard(){ document.body.classList.add('signed-in'); $('#login').hidden=true;$('#dashboard').hidden=false;$('#account').hidden=false;$('#email').textContent=user.email;$('#users-tab').hidden=!user.admin;$('#share-label').hidden=!user.admin;connectLive();loadConnectorRelease();}
@@ -20,28 +20,34 @@ function compareVersion(first,second){const a=String(first).split('.').map(Numbe
 async function loadConnectorRelease(){try{const response=await fetch('/static/connector-release.json',{cache:'no-store'});if(!response.ok)throw Error();connectorRelease=await response.json();renderLive();}catch{connectorRelease=undefined;}}
 function formatTime(seconds){seconds=Math.max(0,Number(seconds)||0);return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');}
 function renderLive(){const d=liveData||{},update=connectorRelease&&connectorVersion&&compareVersion(connectorVersion,connectorRelease.version)<0;$('#connector-status').textContent=connectorConnected?'CADOS Connector verbunden'+(connectorVersion?' · Version '+connectorVersion:''):'CADOS Connector nicht verbunden';$('#connector-detail').textContent=connectorConnected?(d.trainer_connected?'Trainer: '+d.trainer_name:'Trainer noch nicht verbunden. Klicke auf „Trainer verbinden“.'):'Öffne CADOS Connector auf deinem Mac. Das Training läuft dort auch weiter, wenn das Internet kurz ausfällt.';$('#connector-update').hidden=!update;if(update){const updateLink=$('#connector-update-link');updateLink.href=connectorRelease.macos.url;updateLink.target='_blank';updateLink.rel='noopener';updateLink.textContent='Version '+connectorRelease.version+' herunterladen';}$('#connector-connect').disabled=!connectorConnected;$('#live-state').textContent=(d.state||'bereit').toUpperCase();$('#live-workout').textContent=d.workout_name||'Kein Training aktiv';$('#live-block').textContent=d.current_block_name||'Wähle ein Workout und starte es auf deinem Mac.';$('#live-power').textContent=d.current_watts!=null?Math.round(d.current_watts)+' W':'– W';$('#live-target').textContent='Ziel '+(d.target_watts!=null?Math.round(d.target_watts)+' W':'– W')+(d.adaptive_relief_watts?' · −'+d.adaptive_relief_watts+' W':'');$('#live-cadence').textContent=d.current_cadence!=null?Math.round(d.current_cadence)+' rpm':'– rpm';$('#live-target-cadence').textContent='Ziel '+(d.target_cadence!=null?Math.round(d.target_cadence)+' rpm':'– rpm');$('#live-hr').textContent=d.heart_rate?Math.round(d.heart_rate)+' bpm':'– bpm';$('#live-time').textContent=d.elapsed_sec!=null?formatTime(d.elapsed_sec)+' gefahren · '+formatTime(d.remaining_sec)+' offen':'–';$('#live-erg').value=d.adaptive_erg?'adaptive':'normal';}
+function handleLiveMessage(message,local=false){
+  if(message.local_access&&!local)window.offerLocalAccess?.(message.local_access);
+  if(message.type==='devices'){window.receiveDevices?.(message);return;}
+  if(message.type==='connector'){
+    connectorConnected=!!message.connected||localConnected;
+    if(message.connected&&liveSocket?.readyState===1)liveSocket.send(JSON.stringify({type:'command',command:{name:'snapshot'}}));
+    if(!connectorConnected)lastTelemetryAt=0;
+    renderLive();
+  }else if(message.type==='status'){connectorVersion=message.version||connectorVersion;renderLive();}
+  else if(message.type==='telemetry'){
+    if(local||!localConnected)acceptTelemetry(message.payload||{});
+  }else if(message.type==='recovery'){
+    if(local||!localConnected){liveWorkout=message.payload.workout;liveHistory=message.payload.history||[];acceptTelemetry(message.payload.telemetry||{},true);}
+  }else if(message.type==='error'){pendingStart=false;notice(message.message,true);renderLive();}
+}
 function connectLive(){
   if(liveSocket||!user)return;
   const socket=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/api/v1/live/browser');
   liveSocket=socket;
   socket.onopen=()=>{if(liveSocket!==socket)return;serverConnected=true;renderLive();};
-  socket.onmessage=event=>{
-    if(liveSocket!==socket||!user)return;
-    const message=JSON.parse(event.data);
-    if(message.type==='connector'){connectorConnected=!!message.connected;if(connectorConnected)socket.send(JSON.stringify({type:'command',command:{name:'snapshot'}}));if(!connectorConnected)lastTelemetryAt=0;renderLive();}
-    else if(message.type==='status'){connectorVersion=message.version||connectorVersion;renderLive();}
-    else if(message.type==='telemetry')acceptTelemetry(message.payload||{});
-    else if(message.type==='recovery'){
-      liveWorkout=message.payload.workout;
-      liveHistory=message.payload.history||[];
-      acceptTelemetry(message.payload.telemetry||{},true);
-    }else if(message.type==='error'){pendingStart=false;notice(message.message,true);renderLive();}
-  };
-  socket.onclose=()=>{if(liveSocket!==socket)return;liveSocket=null;serverConnected=false;connectorConnected=false;renderLive();if(user)setTimeout(connectLive,3000);};
+  socket.onmessage=event=>{if(liveSocket===socket&&user)handleLiveMessage(JSON.parse(event.data));};
+  socket.onclose=()=>{if(liveSocket!==socket)return;liveSocket=null;serverConnected=false;connectorConnected=localConnected;renderLive();if(user)setTimeout(connectLive,3000);};
 }
 function connectorCommand(command){
-  if(!connectorConnected||!liveSocket||liveSocket.readyState!==WebSocket.OPEN)throw Error('Verbindung unterbrochen. Du kannst das Training im Connector-Fenster bedienen.');
-  liveSocket.send(JSON.stringify({type:'command',command}));
+  // Starting a new workout still requires the server's current account/profile.
+  const socket=localConnected&&!['start','update'].includes(command.name)?localSocket:liveSocket;
+  if(!connectorConnected||!socket||socket.readyState!==WebSocket.OPEN)throw Error('Verbindung unterbrochen. Nutze die lokale Trainingsansicht oder das Connector-Fenster.');
+  socket.send(JSON.stringify({type:'command',command}));
 }
 function startOnMac(record){
   if(pendingStart||isTrainingActive())return;

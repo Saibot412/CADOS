@@ -1,3 +1,29 @@
+## 0.4.1 – Markenübergreifende Bluetooth-Geräte
+
+- Trainer und Pulssensoren in Web- und lokaler Trainingsansicht getrennt suchen, auswählen und merken.
+- Wiederverbindung gemerkter Geräte; keine Bevorzugung von Wahoo oder Garmin.
+- FTMS-ERG-Fähigkeit und optionalen Leistungsbereich prüfen; Watt-Schrittweite berücksichtigen.
+- Getrennte FTMS-Messpakete korrekt verarbeiten; fehlende Kadenz beendet keinen FTP-Test.
+- Standard-Bluetooth-Pulssensoren unabhängig von der Marke; Kontaktverlust und veraltete Messwerte berücksichtigen.
+- Kompatibilitätsvergleich mit Zwift, MyWhoosh und ROUVY dokumentiert. Modellzusagen bleiben von echten Gerätetests abhängig.
+
+## 0.4.0 – Einfacher Einstieg und lokales Training
+
+- DMG mit Programme-Verknüpfung und Installationsanleitung; Updates per Klick mit Prüfsumme und Sperre während Trainings.
+- Einmalige, fünf Minuten gültige Browser-Kopplung statt zweiter Passworteingabe im Connector.
+- Automatische lokale Trainingssicherung alle fünf Sekunden mit pausierter Wiederherstellung nach Abstürzen.
+- Bereitschaftsanzeige für Konto, Trainer, Kadenz, optionalen Pulssensor und lokale Verbindung.
+- Direkte lokale Browser-Verbindung und zusätzliche lokale Trainingsansicht für Serverausfälle.
+- Datenbankmigration auf Version 4 erfolgt automatisch beim Serverstart.
+- macOS-Paket ist nicht Apple-notarisiert; die manuelle macOS-Freigabe kann erforderlich sein.
+
+## FTP-Rampentest: automatisches Testende
+
+- Fällt die Kadenz während einer Belastungsstufe nach gemessenem Treten auf 0, endet der Test automatisch und die vorhandene FTP-Auswertung wird gespeichert.
+- Die tatsächlich gefahrene Zeit bleibt erhalten; nicht gefahrene Stufen werden nicht als absolviert gezählt.
+- Aufwärmen, ein Bluetooth-Verbindungsabbruch und normale Workouts lösen dieses Testende nicht aus.
+- Die Änderung erfordert einen neu gebauten und installierten Connector.
+
 ## Projektbereinigung – Web und Connector
 
 - Alte vollständige Desktop-Oberfläche, Projekt-App-Starter und zugehörige UI-Tests entfernt.

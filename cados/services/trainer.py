@@ -4,10 +4,12 @@ import asyncio
 import logging
 import struct
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from typing import Any
 
 from cados.services.async_loop import AsyncLoopThread
+from cados.services.ble_devices import advertisement_info, TRAINER_NAMES
 from cados.services.trainer_control import TrainerCommandWorker
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,8 @@ except ImportError:  # pragma: no cover - optional dependency at runtime
 class TrainerDevice:
     identifier: str
     name: str
+    protocol: str = "Prüfung beim Verbinden"
+    rssi: int | None = None
 
 
 @dataclass(slots=True)
@@ -33,14 +37,21 @@ class TrainerSnapshot:
     source_label: str = "Bluetooth FTMS"
     device_name: str = "Nicht verbunden"
     status_text: str = "Bluetooth nicht verbunden"
+    cadence_available: bool = False
+    power_available: bool = False
+    min_power: int | None = None
+    max_power: int | None = None
+    power_step: int | None = None
 
 
 class FtmsBluetoothService:
     FTMS_SERVICE_UUID = "00001826-0000-1000-8000-00805f9b34fb"
     INDOOR_BIKE_DATA_UUID = "00002ad2-0000-1000-8000-00805f9b34fb"
     CONTROL_POINT_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"
+    FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
+    POWER_RANGE_UUID = "00002ad8-0000-1000-8000-00805f9b34fb"
+    DATA_TIMEOUT_SEC = 5.0
     STATUS_UUID = "00002ada-0000-1000-8000-00805f9b34fb"
-    PREFERRED_NAME_TOKENS = ("wahoo", "kickr")
 
     RESPONSE_CODE = 0x80
     REQUEST_CONTROL = 0x00
@@ -53,6 +64,8 @@ class FtmsBluetoothService:
     def __init__(self, scan_timeout_sec: int = 5):
         self._scan_timeout_sec = scan_timeout_sec
         self._loop_thread = AsyncLoopThread() if BleakClient and BleakScanner else None
+        self._seen_devices = {}
+        self._power_at = self._cadence_at = None
         self._client: Any | None = None
         self._lock = threading.Lock()
         self._pending_control_response: asyncio.Future[tuple[int, int]] | None = None
@@ -86,23 +99,19 @@ class FtmsBluetoothService:
         assert BleakScanner is not None
         found = await BleakScanner.discover(timeout=self._scan_timeout_sec, return_adv=True)
         devices: list[TrainerDevice] = []
+        self._seen_devices = {}
         for device, advertisement in found.values():
-            name = device.name or device.address or "Bluetooth-Gerät"
-            uuids = {uuid.lower() for uuid in advertisement.service_uuids}
-            looks_like_trainer = any(token in name.lower() for token in (*self.PREFERRED_NAME_TOKENS, "trainer"))
-            if self.FTMS_SERVICE_UUID in uuids or looks_like_trainer:
-                devices.append(TrainerDevice(identifier=device.address, name=name))
+            name, uuids, rssi = advertisement_info(device, advertisement)
+            standard = self.FTMS_SERVICE_UUID in uuids
+            if standard or any(token in name.casefold() for token in TRAINER_NAMES):
+                self._seen_devices[device.address] = device
+                devices.append(TrainerDevice(device.address, name, "Bluetooth FTMS" if standard else "Prüfung beim Verbinden", rssi))
         devices.sort(key=self._device_sort_key)
         return devices
 
     @classmethod
     def _device_sort_key(cls, device: TrainerDevice) -> tuple[int, str]:
-        return (0 if cls.is_preferred_device_name(device.name) else 1, device.name.lower())
-
-    @classmethod
-    def is_preferred_device_name(cls, name: str) -> bool:
-        lowered = name.lower()
-        return any(token in lowered for token in cls.PREFERRED_NAME_TOKENS)
+        return (0 if device.protocol == "Bluetooth FTMS" else 1, device.name.lower())
 
     def connect(self, identifier: str, fallback_name: str | None = None) -> None:
         if not self.available:
@@ -115,11 +124,33 @@ class FtmsBluetoothService:
             raise RuntimeError("Trainer wird bereits beendet.")
         async with self._command_lock:
             await self._disconnect()
-            client = BleakClient(identifier, disconnected_callback=self._handle_disconnect)
+            client = BleakClient(self._seen_devices.get(identifier, identifier), disconnected_callback=lambda sender: self._handle_disconnect(sender) if self._client is sender else None)
             self._client = client
             try:
                 await client.connect()
-                await client.start_notify(self.INDOOR_BIKE_DATA_UUID, self._handle_indoor_bike_data)
+                services = client.services
+                if not services.get_characteristic(self.INDOOR_BIKE_DATA_UUID) or not services.get_characteristic(self.CONTROL_POINT_UUID):
+                    raise RuntimeError("Dieses Gerät bietet keine Bluetooth-FTMS-ERG-Steuerung. Firmware aktualisieren; ältere proprietäre oder reine ANT+-Trainer werden noch nicht unterstützt.")
+                self._power_at = self._cadence_at = None
+                if services.get_characteristic(self.FEATURE_UUID):
+                    features = None
+                    try:
+                        raw_features = await client.read_gatt_char(self.FEATURE_UUID)
+                        if len(raw_features) == 8:
+                            features = int.from_bytes(raw_features[4:], 'little')
+                    except Exception:
+                        logger.debug("Optionale FTMS-Fähigkeiten nicht lesbar.")
+                    if features is not None and not features & (1 << 3):
+                        raise RuntimeError("Dieses FTMS-Gerät unterstützt keine Ziel-Leistung (ERG).")
+                if services.get_characteristic(self.POWER_RANGE_UUID):
+                    try:
+                        raw = await client.read_gatt_char(self.POWER_RANGE_UUID)
+                        minimum, maximum, step = struct.unpack('<hhH', raw)
+                        if minimum < maximum and maximum > 0 and step > 0:
+                            self._set_snapshot(min_power=max(0, minimum), max_power=maximum, power_step=step)
+                    except Exception:
+                        logger.debug("Optionaler Leistungsbereich nicht lesbar.")
+                await client.start_notify(self.INDOOR_BIKE_DATA_UUID, lambda sender, data: self._handle_indoor_bike_data(sender, data) if self._client is client else None)
                 await client.start_notify(self.CONTROL_POINT_UUID, self._handle_control_point_response)
                 try:
                     await client.start_notify(self.STATUS_UUID, self._handle_status)
@@ -141,6 +172,8 @@ class FtmsBluetoothService:
 
     async def _disconnect(self) -> None:
         self._ready_for_control = False
+        self._power_at = self._cadence_at = None
+        self._set_snapshot(min_power=None, max_power=None, power_step=None)
         if self._client is None:
             return
         client, self._client = self._client, None
@@ -175,6 +208,12 @@ class FtmsBluetoothService:
 
     def set_target_power(self, watts: int) -> bool:
         if self.available and self.connected:
+            snap = self.read_snapshot()
+            minimum, maximum = snap.min_power or 0, snap.max_power or 32767
+            watts = min(maximum, max(minimum, int(watts)))
+            if snap.power_step:
+                watts = minimum + round((watts - minimum) / snap.power_step) * snap.power_step
+                watts = min(maximum, max(minimum, watts))
             payload = bytes([self.SET_TARGET_POWER]) + struct.pack("<h", int(watts))
             return self._loop_thread.call(self._run_control_command(payload)) == 0x01
         return False
@@ -246,14 +285,18 @@ class FtmsBluetoothService:
 
     def read_snapshot(self) -> TrainerSnapshot:
         with self._lock:
-            return TrainerSnapshot(
-                current_watts=self._snapshot.current_watts,
-                cadence=self._snapshot.cadence,
-                connected=self._snapshot.connected,
-                source_label=self._snapshot.source_label,
-                device_name=self._snapshot.device_name,
-                status_text=self._snapshot.status_text,
-            )
+            snapshot = replace(self._snapshot)
+            now = time.monotonic()
+            snapshot.power_available = self._power_at is not None and now - self._power_at <= self.DATA_TIMEOUT_SEC
+            snapshot.cadence_available = self._cadence_at is not None and now - self._cadence_at <= self.DATA_TIMEOUT_SEC
+            if not snapshot.cadence_available:
+                snapshot.cadence = 0
+            if not snapshot.power_available:
+                snapshot.current_watts = 0
+            if snapshot.connected and self._power_at is not None and not snapshot.power_available:
+                snapshot.connected = False
+                snapshot.status_text = "Keine aktuellen Leistungsdaten – Training pausiert."
+            return snapshot
 
     def close(self) -> None:
         self._closing = True
@@ -275,6 +318,9 @@ class FtmsBluetoothService:
                 "source_label": self._snapshot.source_label,
                 "device_name": self._snapshot.device_name,
                 "status_text": self._snapshot.status_text,
+                "min_power": self._snapshot.min_power,
+                "max_power": self._snapshot.max_power,
+                "power_step": self._snapshot.power_step,
             }
             current.update(changes)
             self._snapshot = TrainerSnapshot(**current)
@@ -324,49 +370,47 @@ class FtmsBluetoothService:
 
     def _handle_indoor_bike_data(self, _: Any, data: bytearray) -> None:
         try:
-            current_watts, cadence = self._parse_indoor_bike_data(bytes(data))
-        except Exception as exc:
-            logger.debug("Indoor-Bike-Daten konnten nicht geparst werden: %s", exc)
+            power, cadence = self._parse_indoor_bike_data(bytes(data))
+        except (ValueError, struct.error):
+            logger.debug("Unvollständiges FTMS-Datenpaket ignoriert.")
             return
-        self._set_snapshot(
-            current_watts=current_watts,
-            cadence=cadence,
-            connected=self._ready_for_control,
-            source_label="Bluetooth FTMS",
-            status_text=self._last_response if self._last_response != "Keine Steuerantwort" else "Verbunden",
-        )
+        changes = {"connected": self._ready_for_control}
+        with self._lock:
+            now = time.monotonic()
+            if power is not None:
+                self._power_at = now
+                changes['current_watts'] = max(0, power)
+            if cadence is not None:
+                self._cadence_at = now
+                changes['cadence'] = cadence
+            self._snapshot = replace(self._snapshot, **changes)
 
     @staticmethod
-    def _parse_indoor_bike_data(payload: bytes) -> tuple[int, int]:
+    def _parse_indoor_bike_data(payload: bytes) -> tuple[int | None, int | None]:
         if len(payload) < 2:
-            return 0, 0
-
+            raise ValueError("FTMS-Flags fehlen")
         flags = int.from_bytes(payload[:2], "little")
         offset = 2
-
-        if not flags & (1 << 0):
-            offset += 2
+        def take(size):
+            nonlocal offset
+            if offset + size > len(payload):
+                raise ValueError("FTMS-Datenpaket unvollständig")
+            value = payload[offset:offset + size]
+            offset += size
+            return value
+        if not flags & 1:
+            take(2)  # Instantaneous speed is absent in a continuation packet.
         if flags & (1 << 1):
-            offset += 2
-
-        cadence = 0
-        if flags & (1 << 2):
-            cadence_raw = struct.unpack_from("<H", payload, offset)[0]
-            cadence = round(cadence_raw / 2)
-            offset += 2
-        if flags & (1 << 3):
-            offset += 2
-        if flags & (1 << 4):
-            offset += 3
-        if flags & (1 << 5):
-            offset += 2
-
-        current_watts = 0
-        if flags & (1 << 6):
-            current_watts = struct.unpack_from("<h", payload, offset)[0]
-            offset += 2
-
-        return current_watts, cadence
+            take(2)
+        cadence = round(int.from_bytes(take(2), 'little') / 2) if flags & (1 << 2) else None
+        for bit, size in ((3, 2), (4, 3), (5, 2)):
+            if flags & (1 << bit):
+                take(size)
+        power = int.from_bytes(take(2), 'little', signed=True) if flags & (1 << 6) else None
+        for bit, size in ((7, 2), (8, 5), (9, 1), (10, 1), (11, 2), (12, 2)):
+            if flags & (1 << bit):
+                take(size)
+        return power, cadence
 
 
 class TrainerController:
@@ -389,10 +433,7 @@ class TrainerController:
     def pick_preferred_device(devices: list[TrainerDevice]) -> TrainerDevice | None:
         if not devices:
             return None
-        for device in devices:
-            if FtmsBluetoothService.is_preferred_device_name(device.name):
-                return device
-        return devices[0]
+        return sorted(devices, key=FtmsBluetoothService._device_sort_key)[0]
 
     def connect_device(self, identifier: str, device_name: str | None = None) -> None:
         self._commands.connection_changed(False)

@@ -7,6 +7,8 @@ The web release manifest points users to that download.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import plistlib
 import shutil
@@ -69,8 +71,26 @@ def main() -> None:
     dmg = args.output / "CADOS-Connector-macOS.dmg"
     if dmg.exists():
         dmg.unlink()
-    run("hdiutil", "create", "-volname", "CADOS Connector", "-srcfolder", str(app),
+    staging = build / 'dmg'
+    staging.mkdir()
+    shutil.copytree(app, staging / app.name, symlinks=True)
+    (staging / 'Programme').symlink_to('/Applications')
+    (staging / 'Installation.txt').write_text(
+        'CADOS Connector installieren\n\n'
+        '1. CADOS Connector.app auf Programme ziehen.\n'
+        '2. App aus Programme öffnen.\n'
+        '3. Falls macOS blockiert: Systemeinstellungen > Datenschutz & Sicherheit > Dennoch öffnen.\n'
+        '   Diese App ist nicht von Apple notarisiert.\n'
+        '4. Bluetooth erlauben und das Konto im Browser bestätigen.\n'
+        '5. Updates über das Connector-Fenster installieren (außerhalb eines Trainings).\n', encoding='utf-8')
+    run("hdiutil", "create", "-volname", "CADOS Connector", "-srcfolder", str(staging),
         "-ov", "-format", "UDZO", "-imagekey", "zlib-level=9", str(dmg))
+    manifest_path = ROOT / 'server/app/static/connector-release.json'
+    manifest = json.loads(manifest_path.read_text())
+    manifest['version'] = __version__
+    manifest['macos'] = {'url': f'https://github.com/Saibot412/CADOS/releases/download/v{__version__}/CADOS-Connector-macOS.dmg',
+                         'sha256': hashlib.sha256(dmg.read_bytes()).hexdigest()}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
     print(dmg)
 
 

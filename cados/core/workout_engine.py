@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -86,6 +88,8 @@ class WorkoutEngine:
 
     def _reset_metrics(self) -> None:
         self.metrics = TrainingMetrics()
+        self._ftp_cadence_seen = False
+        self._session_id = str(uuid4())
 
     def set_profile(self, profile: UserProfile | None) -> None:
         self.profile = profile
@@ -235,6 +239,15 @@ class WorkoutEngine:
             return self._apply_control()
 
         if self.state == "running":
+            _, block, _ = self.workout.locate_block(self.elapsed_sec)
+            in_test_stage = self.is_ftp_test and block.label.casefold().startswith(("step ", "stufe "))
+            if in_test_stage and getattr(probe, "cadence_available", True):
+                # Only a measured drop after pedaling ends the test. Initial zero
+                # or a trainer without cadence must not immediately finish it.
+                if probe.cadence > 0:
+                    self._ftp_cadence_seen = True
+                elif probe.cadence == 0 and self._ftp_cadence_seen:
+                    return self._complete_workout(early=True)
             dt = min(dt, self.workout.total_duration_sec - self.elapsed_sec)
             if probe.current_watts <= 0:
                 dt = min(dt, max(0.0, self.ZERO_WATTS_PAUSE_DELAY_SEC - self._zero_watts_sec))
@@ -433,10 +446,44 @@ class WorkoutEngine:
         return ftp_test_result({"workout_name": self.workout.name, "ftp_watts": self.workout.ftp_watts,
             "workout_payload": self.workout_template.to_dict(), "samples": self.metrics.samples})
 
-    def _complete_workout(self) -> TrainingSnapshot:
+    def checkpoint(self) -> dict | None:
+        if self.workout is None or self.state not in {"running", "paused", "waiting_for_pedal"}:
+            return None
+        return {"version": 1, "session_id": self._session_id,
+                "workout": self.workout_template.to_dict(),
+                "profile": self.profile.to_dict() if self.profile else None,
+                "ftp_watts": self.workout.ftp_watts, "elapsed_sec": self.elapsed_sec,
+                "started_at": self.started_at, "adjustment_watts": self.adjustment_watts,
+                "adaptive_erg": self.adaptive_erg}
+
+    def restore_checkpoint(self, checkpoint: dict, workout: WorkoutTemplate) -> TrainingSnapshot:
+        if checkpoint.get("version") != 1:
+            raise ValueError("Unbekannte Version der Trainingssicherung.")
+        self.set_profile(UserProfile.from_dict(checkpoint["profile"]) if checkpoint.get("profile") else None)
+        self.load_workout(workout, ftp_watts=checkpoint["ftp_watts"])
+        self._session_id = checkpoint["session_id"]
+        self.elapsed_sec = min(float(checkpoint["elapsed_sec"]), self.workout.total_duration_sec)
+        self.started_at = checkpoint["started_at"]
+        self.adjustment_watts = checkpoint.get("adjustment_watts", 0)
+        self.set_adaptive_erg(checkpoint.get("adaptive_erg", False))
+        segment = None
+        for sample in checkpoint.get("samples", []):
+            if segment != sample.get("segment", 0):
+                self.metrics.break_power_window()
+            segment = sample.get("segment", 0)
+            self.metrics.add(sample["duration_sec"], sample["watts"], sample["cadence"],
+                             sample.get("heart_rate"), sample["workout_elapsed_sec"], sample["target_watts"])
+        self.metrics.break_power_window()
+        self.state = "paused"
+        self._auto_paused = False
+        self._update_target_state(0)
+        return self._apply_control()
+
+    def _complete_workout(self, *, early: bool = False) -> TrainingSnapshot:
         if self.workout is None or self.state in {"completed", "stopped"}:
             return self.snapshot()
-        self.elapsed_sec = float(self.workout.total_duration_sec)
+        if not early:
+            self.elapsed_sec = float(self.workout.total_duration_sec)
         self.state = "completed"
         self.trainer.stop_session()
         if self._pending_session is None:
@@ -449,6 +496,7 @@ class WorkoutEngine:
         profile = self.profile or UserProfile(name="Standard", ftp=self.workout.ftp_watts)
         workout_payload = self.workout_template.to_dict() if self.workout_template is not None else self.workout.to_dict()
         return WorkoutSessionRecord(
+            id=self._session_id,
             ftp_test_result=self._ftp_result(),
             user_id=profile.id,
             user_name=profile.name,

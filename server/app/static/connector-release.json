@@ -1,6 +1,7 @@
 {
-  "version": "0.3.1",
+  "version": "0.4.1",
   "macos": {
-    "url": "https://github.com/Saibot412/CADOS/releases/download/v0.3.1/CADOS-Connector-macOS.dmg"
+    "url": "https://github.com/Saibot412/CADOS/releases/download/v0.4.1/CADOS-Connector-macOS.dmg",
+    "sha256": "d6a70f0eea1dfd09ab0ea2abb05f3ddc1071f71b6a2b57bac5ee08078c91f6db"
   }
 }

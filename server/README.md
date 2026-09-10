@@ -69,7 +69,7 @@ Benutzer registrieren sich im Browser und verwalten dort ihr Profil, Workouts un
 JSON/ZWO-Import und der Workout-Builder unterstützen konstante Blöcke und Rampen.
 Administratoren verwalten Benutzer und veröffentlichen gemeinsame Workouts.
 
-Den Connector von der Webseite herunterladen und mit demselben Konto anmelden.
+Den Connector von der Webseite herunterladen und seine Kopplung im angemeldeten Browser bestätigen.
 Er übernimmt Bluetooth und Training; die gesamte Workout-Verwaltung erfolgt im Browser.
 Gespeicherte Anmeldungen werden wiederverwendet. **Anmeldung ändern …** im Connector-Menü
 ermöglicht eine erneute Anmeldung. Weitere Konten erhalten getrennte lokale Datenbanken.
@@ -87,7 +87,7 @@ ermöglicht eine erneute Anmeldung. Weitere Konten erhalten getrennte lokale Dat
 * Ein bereits gestartetes Training läuft bei Internetausfall weiter.
   Lokale Tasten im Connector ermöglichen Pause, Fortsetzen und Beenden.
 * Laufende Trainings sind nicht fortlaufend auf dem Server gesichert.
-  Ein erzwungenes Prozessende kann die laufende Session verlieren.
+  Eine lokale Sicherung alle fünf Sekunden erlaubt Wiederherstellen oder Speichern nach einem Absturz.
 * Der Abgleich lädt derzeit den vollständigen Kontostand; Antworten sind auf 100 MB begrenzt.
 
 ## Betrieb und Wiederherstellung
@@ -106,13 +106,12 @@ derzeit das IP-Limit (20 Versuche in 15 Minuten); zusätzlich besteht ein E-Mail
 
 Regelmäßige PostgreSQL-Backups mit `pg_dump` und Wiederherstellung mit `pg_restore`
 über die vorhandene Serveradministration einrichten. Vor jedem Update ein Backup anlegen.
-Lokale SQLite-Sicherungen sind über **Konto → Lokale Daten sichern** möglich.
 Ein Backup einer laufenden SQLite-Datenbank erfolgt über die Backup-API, nicht durch
 einfaches Kopieren der Hauptdatei ohne WAL.
 
-Schemaänderungen stehen in `server/app/database.py`. Version 1 ist additiv und durch
-eine PostgreSQL-Transaktionssperre gegen parallele Migrationen geschützt. Künftige
-Änderungen müssen als neue versionierte Migrationen ergänzt werden.
+Schemaänderungen stehen in `server/app/database.py` und laufen beim Start automatisch.
+Version 4 ergänzt kurzlebige, einmalig verwendbare Connector-Kopplungen.
+Eine PostgreSQL-Transaktionssperre schützt parallele Migrationen.
 
 ## Tests
 
@@ -131,3 +130,23 @@ python -m pip install playwright
 python -m playwright install chromium
 python scripts/smoke_web.py
 ```
+
+## Connector veröffentlichen und aktualisieren
+
+1. Version in `cados/__init__.py` und `pyproject.toml` erhöhen.
+2. Auf dem Mac `python scripts/build_macos_connector.py` ausführen.
+3. Das erzeugte `release/CADOS-Connector-macOS.dmg` an das passende GitHub-Release
+   (z. B. `v0.4.0`) anhängen. Die Datei wird nicht ins Git-Repository aufgenommen.
+4. Das beim Build aktualisierte `server/app/static/connector-release.json` enthält
+   Download-URL und SHA-256-Prüfsumme. Erst nach Upload des passenden DMGs mit dem
+   Server ausliefern. Nach einem erneuten Build müssen DMG und Manifest zusammen erneuert werden.
+
+Das erste Update vom bisherigen Connector auf 0.4.0 erfolgt per DMG. Ab 0.4.0 ist
+Installation per Klick im Connector verfügbar. Die App ist nicht Apple-notarisiert.
+Der neue Installer zeigt bei fehlenden Schreibrechten das DMG zum manuellen Ersetzen.
+Die Server-Ports ändern sich nicht. Port 48732 wird ausschließlich auf dem Computer
+mit dem Connector an `127.0.0.1` gebunden, nicht am Server oder im Router freigegeben.
+Die lokale WebSocket-Verbindung prüft Origin und einen zufälligen Sitzungsschlüssel;
+der Schlüssel wird nur über die angemeldete Serververbindung an das passende Konto übergeben.
+Die lokale Ansicht im Connector funktioniert auch, wenn der Browser Zugriffe von HTTPS
+auf Loopback blockiert. Für einen neuen Trainingsstart bleibt die Serververbindung erforderlich.

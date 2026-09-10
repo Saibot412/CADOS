@@ -50,7 +50,7 @@ class WorkoutLibraryClient:
         return result["user"]
 
     def _request(self, path: str, *, method: str = "GET", payload: dict | None = None) -> dict:
-        if not self.enabled and path != "/api/v1/auth/login":
+        if not self.enabled and path not in {"/api/v1/auth/login", "/api/v1/connector/pair/begin", "/api/v1/connector/pair/poll"}:
             raise WorkoutLibraryError("Die zentrale Workout-Bibliothek ist nicht eingerichtet.")
         self._validate_url()
         data = None if payload is None else json.dumps(payload, allow_nan=False).encode("utf-8")
