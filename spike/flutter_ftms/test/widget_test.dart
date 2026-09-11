@@ -1,7 +1,7 @@
-import 'package:cados_ftms_spike/ftms/ftms_protocol.dart';
-import 'package:cados_ftms_spike/ftms/ftms_spike_controller.dart';
-import 'package:cados_ftms_spike/ftms/ftms_transport.dart';
-import 'package:cados_ftms_spike/ftms_spike_app.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_protocol.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_spike_controller.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_transport.dart';
+import 'package:cados_ftms_spike/presentation/ftms_spike_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

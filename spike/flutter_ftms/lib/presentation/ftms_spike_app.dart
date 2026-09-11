@@ -1,13 +1,24 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'dart:async';
 
-import 'ftms/ftms_spike_controller.dart';
-import 'ftms/ftms_transport.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_spike_controller.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_transport.dart';
+import 'package:flutter/material.dart';
+
+import '../features/heart_rate/heart_rate_controller.dart';
+import 'diagnostics_panel.dart';
+import 'heart_rate_panel.dart';
 
 class CadosFtmsSpike extends StatelessWidget {
-  const CadosFtmsSpike({super.key, required this.controller});
+  const CadosFtmsSpike({
+    super.key,
+    required this.controller,
+    this.heartRate,
+    this.exportLog,
+  });
 
   final FtmsSpikeController controller;
+  final HeartRateController? heartRate;
+  final Future<void> Function()? exportLog;
 
   @override
   Widget build(BuildContext context) {
@@ -26,14 +37,25 @@ class CadosFtmsSpike extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: FtmsSpikeScreen(controller: controller),
+      home: FtmsSpikeScreen(
+        controller: controller,
+        heartRate: heartRate,
+        exportLog: exportLog,
+      ),
     );
   }
 }
 
 class FtmsSpikeScreen extends StatefulWidget {
-  const FtmsSpikeScreen({super.key, required this.controller});
+  const FtmsSpikeScreen({
+    super.key,
+    required this.controller,
+    this.heartRate,
+    this.exportLog,
+  });
   final FtmsSpikeController controller;
+  final HeartRateController? heartRate;
+  final Future<void> Function()? exportLog;
 
   @override
   State<FtmsSpikeScreen> createState() => _FtmsSpikeScreenState();
@@ -44,8 +66,27 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
 
   @override
   void dispose() {
+    widget.heartRate?.dispose();
     controller.dispose();
+    unawaited(_closeResources());
     super.dispose();
+  }
+
+  Future<void> _closeResources() async {
+    try {
+      await Future.wait([
+        controller.closed,
+        if (widget.heartRate != null) widget.heartRate!.closed,
+      ]);
+    } catch (error) {
+      debugPrint('CADOS controller shutdown failed: $error');
+    } finally {
+      try {
+        await controller.logger?.close();
+      } catch (error) {
+        debugPrint('CADOS diagnostic logger shutdown failed: $error');
+      }
+    }
   }
 
   @override
@@ -91,7 +132,14 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                _logPanel(),
+                if (widget.heartRate != null)
+                  HeartRatePanel(controller: widget.heartRate!),
+                const SizedBox(height: 16),
+                DiagnosticsPanel(
+                  logger: controller.logger,
+                  fallback: controller.logs,
+                  exportLog: widget.exportLog,
+                ),
               ],
             ),
           ),
@@ -111,8 +159,8 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
           Expanded(
             child: Text(
               'Technischer Spike – noch kein vollständiges CADOS. '
-              'Montiere das Rad sicher. Beginne mit 100 W und bleibe beim '
-              'Trainer, wenn du Start, Pause oder Stop testest.',
+              'Nach Verbindungsabbruch werden Steuerfreigabe und Messdaten neu '
+              'aufgebaut. Start und Zielleistung bleiben explizite Aktionen.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
           ),
@@ -149,7 +197,11 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
           const SizedBox(height: 12),
           FilledButton.icon(
             key: const Key('scanButton'),
-            onPressed: controller.busy ? null : controller.scan,
+            onPressed: controller.busy
+                ? null
+                : controller.scanning
+                ? controller.stopScan
+                : controller.scan,
             icon: controller.scanning
                 ? const SizedBox.square(
                     dimension: 18,
@@ -174,12 +226,25 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
             )
           else
             ...controller.devices.map(_deviceTile),
-          if (controller.connected) ...[
+          if (controller.preferred != null)
+            TextButton(
+              onPressed: controller.busy
+                  ? null
+                  : () => controller.connect(
+                      FtmsDevice(
+                        id: controller.preferred!.id,
+                        name: controller.preferred!.name,
+                      ),
+                    ),
+              child: Text('Letzter Trainer: ${controller.preferred!.name}'),
+            ),
+          Text('Verbindung: ${controller.connection.phase.name}'),
+          if (controller.selectedDevice != null) ...[
             const Divider(height: 28),
             OutlinedButton.icon(
-              onPressed: controller.busy ? null : controller.disconnect,
+              onPressed: controller.disconnect,
               icon: const Icon(Icons.link_off),
-              label: const Text('Trainer trennen'),
+              label: const Text('Trainer trennen / Reconnect abbrechen'),
             ),
           ],
         ],
@@ -297,71 +362,6 @@ class _FtmsSpikeScreenState extends State<FtmsSpikeScreen> {
   }
 
   bool get _controlsEnabled => controller.connected && !controller.busy;
-
-  Widget _logPanel() => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '3 · Diagnoseprotokoll',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: controller.logs.isEmpty
-                    ? null
-                    : () async {
-                        await Clipboard.setData(
-                          ClipboardData(
-                            text: controller.logs.reversed.join('\n'),
-                          ),
-                        );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Protokoll kopiert')),
-                          );
-                        }
-                      },
-                icon: const Icon(Icons.copy),
-                label: const Text('Kopieren'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            height: 230,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF07100D),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: controller.logs.isEmpty
-                ? const Center(child: Text('Noch keine Ereignisse'))
-                : SelectionArea(
-                    child: ListView.builder(
-                      itemCount: controller.logs.length,
-                      itemBuilder: (context, index) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          controller.logs[index],
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 class _StatusBadge extends StatelessWidget {

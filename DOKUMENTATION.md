@@ -75,7 +75,29 @@ Serverinstallation und Betrieb: [server/README.md](server/README.md).
 
 Der isolierte Flutter-/FTMS-Migrationstest liegt unter
 [`spike/flutter_ftms`](spike/flutter_ftms/README.md). Er ist kein produktiver
-CADOS-Client, sondern prüft zuerst die plattformübergreifende Trainersteuerung.
+CADOS-Client. Die Migration-Alpha enthält getrennte Trainer- und
+Herzfrequenz-Controller, BLE-unabhängige Schnittstellen, begrenzten Reconnect mit
+1/2/4/8/16 Sekunden Backoff, gespeicherte Gerätepräferenzen und ein dauerhaftes
+Diagnoseprotokoll mit 1-MiB-Rotation, drei Aufbewahrungsgenerationen und Datei-Export
+unter Linux/Windows/macOS. Nach Trainer-Reconnect
+werden Services/Abonnements und FTMS-Steuerfreigabe neu aufgebaut; Start und
+Zielleistung werden nicht automatisch wiederhergestellt.
+
+Die Struktur trennt `core`, `application`, `features/trainer`,
+`features/heart_rate`, `features/workout`, `infrastructure` und `presentation`.
+Der reine Dart-Workoutkern ist noch nicht mit Trainerbefehlen verbunden. Parität umfasst FTP-Auflösung,
+Steady/Ramp-Ziele, deterministische Blockwechsel, Start/Pause/Resume/Stop/Completion,
+Anfahr- und Übergangsrampen sowie Wattkorrekturen. Adaptive ERG, Trainingsmetriken,
+FTP-Testauswertung, Sessions und Synchronisation sind noch nicht portiert.
+Die genaue Paritätsmatrix und Testbefehle stehen im Flutter-README.
+
+Der vorhandene Windows-KICKR-CORE-Log bestätigt FTMS-Kommunikation einschließlich
+100 W, Start und Stop. Reale Widerstandsänderungen unter Last bleiben ausdrücklich
+aufgeschoben. Neue HR-Hardware, gleichzeitige Verbindungen, Funk-/Stromausfall und
+native Exportdialoge müssen später auf Geräten validiert werden. Für diesen
+Entwicklungsblock ist kein Fahr- oder Pedaltest nötig; der verletzte Nutzer wird
+nicht zum Treten aufgefordert. Python-Connector und FastAPI/PostgreSQL bleiben
+unverändert.
 
 ```bash
 python3 -m venv .venv

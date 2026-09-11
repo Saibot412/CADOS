@@ -1,88 +1,105 @@
-# CADOS Flutter FTMS Spike
+# CADOS Flutter migration alpha
 
-Technischer Test für die geplante CADOS-Flutter-App. Diese App prüft ausschließlich,
-ob ein Bluetooth-FTMS-Smarttrainer plattformübergreifend gefunden, ausgelesen und im
-ERG-Modus gesteuert werden kann. Sie ersetzt noch nicht CADOS und speichert keine
-Trainingseinheit.
+Flutter 3.47.3 / Dart 3.13.3, `universal_ble 2.3.0`. This remains an isolated
+client under `spike/flutter_ftms`; the Python connector and FastAPI/PostgreSQL
+server are preserved. No workout is recorded or sent to the server yet.
 
-## Unterstützte Tests
+## Architecture
 
-- Scan ausschließlich nach Fitness Machine Service `0x1826`
-- bewusste Auswahl eines Trainers
-- Prüfung von Indoor Bike Data `0x2AD2` und Control Point `0x2AD9`
-- optionale Prüfung der FTMS-Features und des Leistungsbereichs
-- Anzeige von Leistung und Kadenz
-- Request Control
-- Zielleistung 100, 150 und 200 Watt
-- Start/Fortsetzen, Pause und Stop
-- lesbares Diagnoseprotokoll mit Rohbytes der Steuerbefehle und Antworten
+- `lib/core`: pure project-owned device/preferences/diagnostic ports and connection
+  phases, with no Flutter or BLE-plugin imports.
+- `lib/application`: the reusable ChangeNotifier-based connection controller.
+- `lib/features/trainer`: FTMS protocol, transport contract and trainer controller.
+  A successful transport connection means discovery, subscriptions and Request
+  Control all succeeded. Existing power range checks and Start/Pause/Stop remain.
+- `lib/features/heart_rate`: plugin-independent HR transport, measurement parser
+  and separate controller. Scan `180D`, explicitly select a sensor, subscribe
+  `2A37`; decode 8/16-bit little-endian BPM and ignore optional trailing fields.
+- `lib/features/workout`: pure Dart models and deterministic engine. No Flutter,
+  BLE, timers, persistence, network or trainer commands.
+- `lib/infrastructure/ble`: universal_ble adapters and shared scan ownership.
+  Only one scan runs at once; trainer and HR can remain connected together.
+  Stream routing uses per-device subscriptions, not global callback replacement.
+- `lib/infrastructure/preferences`: two small atomic JSON files using `dart:io`.
+  `path_provider` supplies the app-support directory; no extra preferences plugin.
+- `lib/infrastructure/logging`: serialized, flushed file appends and desktop save
+  through Flutter's `file_selector`. The diagnostic port is widget-independent.
+- `lib/presentation`: trainer screen, HR panel and shared diagnostic panel.
+  `main.dart` composes dependencies; tests inject fakes.
 
-BLE wird über `universal_ble 2.3.0` hinter einer eigenen `TrainerTransport`-Schnittstelle
-angesprochen. Die reine FTMS-Protokolllogik ist vom Plugin und von Flutter-Widgets getrennt.
+## Connection and diagnostics behavior
 
-## Sicherheit
+Each selected device has idle/connecting/connected/reconnecting/failed phases;
+scanning is shown separately because it can coexist with an existing connection.
+Disconnect or Bluetooth-off triggers at most five retries after 1, 2, 4, 8 and
+16 seconds. Attempts are serialized; explicit disconnect cancels retries and
+invalidates late setup completion. Setup can take up to plugin operation timeouts
+before cancellation cleanup finishes. Disposal cancels timers and subscriptions,
+waits for pending setup cleanup, then closes transports and logging.
 
-Dies ist ein experimenteller Hardwaretest.
+Trainer reconnect discovers services, subscribes again and requests control before
+ERG-ready. It **never** sends a target or Start automatically. The pure workout
+engine is not wired to these transport controls. Last trainer and HR IDs/names
+are saved under app support `devices/`; on startup they appear as explicit
+reconnect buttons. There is no automatic connection on app launch.
 
-1. Rad und Trainer sicher aufstellen.
-2. Andere Apps wie Zwift, MyWhoosh und den bisherigen CADOS-Connector vollständig schließen.
-3. Beim Trainer bleiben.
-4. Immer zuerst `100 W` senden.
-5. Erst danach Start/Pause/Stop und 150/200 W prüfen.
-6. Bei unerwartetem Widerstand sofort aufhören zu treten und den Trainer vom Strom trennen.
+The shared log retains 250 lines in memory and appends timestamped events and raw
+FTMS command/response bytes to app support `diagnostics/cados.log`, across launches.
+The active file rotates at 1 MiB and retains three bounded generations. It contains
+device names and telemetry, no account credentials or tokens. Copy uses the bounded
+view; **Datei speichern** flushes and streams the current bounded file to the selected
+location on Linux, Windows and macOS. The macOS sandbox permits user-selected writes.
+Android/iOS keep the durable file and clipboard; a mobile share action is deferred.
+Web is not supported by this `dart:io` application composition. Disk write failures
+are surfaced by export.
 
-## Auf einem Mac starten
+## Exact workout parity slice
 
-Flutter Stable installieren und dann im Repository:
+`test/workout_engine_test.dart` references the representative Python fixtures in
+`tests/test_workout_engine.py` and `cados/models/workout.py`:
+
+- FTP resolution: explicit FTP, template reference, default 200 W; percentages
+  override absolute watts. Python ties-to-even rounding is explicit.
+- 10-second 40–80% ramp at FTP 250: 100/150/200 W at 0/5/10 seconds.
+  Following 88% steady block resolves to 176/220/264 W at FTP 200/250/300.
+- Start waits for supplied positive power without advancing time. Five-second
+  startup ramp begins at 30 W; three-second block transition smoothing.
+- Deterministic ticks cross block boundaries and clamp completion. Negative dt
+  becomes zero; gaps over five seconds manually pause without counting time.
+- Two seconds of zero power auto-pause; supplied positive telemetry resumes with
+  a ramp. Disconnect pauses without counting missing time. Manual pause/resume,
+  stop/restart, cumulative watt adjustment and target clamp 0–32767 are covered.
+
+This is **not full Python WorkoutEngine parity**: adaptive ERG, metrics, FTP-test
+cadence termination/results, session/checkpoint persistence, session acknowledgement,
+block navigation, profile management, catalog/JSON loading, zones and network sync
+remain deferred. The Dart constructor rejects empty/nonpositive-duration blocks
+and nonfinite inputs instead of accepting malformed templates. No rider input or
+wall-clock timer is needed to execute these tests.
+
+## Validation and remaining hardware evidence
+
+Existing Windows KICKR CORE evidence establishes scan/connect, FTMS subscription,
+Request Control, 100 W target, Start and Stop success responses. It does not prove
+physical resistance under load. New simultaneous trainer/HR operation, actual HR
+sensor packets, Bluetooth toggle/power-loss recovery, desktop save dialogs and
+platform lifecycle behavior still require future device validation. Physical
+resistance under load stays deferred. **No pedaling or rider test is requested
+for this development block.**
 
 ```bash
 cd spike/flutter_ftms
 flutter pub get
-flutter doctor -v
-flutter run -d macos
-```
-
-macOS muss den Bluetooth-Zugriff erlauben. Wenn der Zugriff zuvor abgelehnt wurde:
-
-`Systemeinstellungen → Datenschutz & Sicherheit → Bluetooth → CADOS FTMS Test`
-
-Alternativ erzeugt der GitHub-Actions-Workflow **CADOS Flutter FTMS Spike** ein
-nicht notarisiertes macOS-ZIP. Nach dem Entpacken kann deshalb
-`Rechtsklick → Öffnen` oder die Freigabe unter Datenschutz & Sicherheit nötig sein.
-
-## Testablauf mit dem echten Trainer
-
-1. Trainer einschalten und auf der App **8 Sekunden nach FTMS suchen** wählen.
-2. Den richtigen Trainer anhand Name und RSSI verbinden.
-3. Prüfen, ob oben **ERG bereit** erscheint.
-4. 20–30 Sekunden locker treten. Leistung und Kadenz müssen regelmäßig aktualisiert werden.
-5. `100 W` drücken und die Control-Antwort **Erfolg** im Protokoll prüfen.
-6. `Start/Fortsetzen` drücken und etwa eine Minute treten.
-7. Nacheinander `150 W`, `200 W` und wieder `100 W` senden. Widerstandsänderung und jede Antwort notieren.
-8. `Pause`, danach `Start/Fortsetzen`, zuletzt `Stop` testen.
-9. Während 100 W Bluetooth kurz deaktivieren oder den Trainer kurz stromlos machen. Die App darf nicht abstürzen und muss **Verbindung getrennt** zeigen.
-10. Erneut scannen, verbinden und 100 W senden.
-11. **Protokoll kopieren** und zusammen mit Plattform, Betriebssystem, Trainer-Modell und Firmware zurückmelden.
-
-## Go-Kriterien
-
-- Trainer wird auf Mac, Windows und Android gefunden.
-- Indoor-Bike-Daten laufen ohne längere Aussetzer.
-- Request Control und alle Steuerbefehle werden mit Erfolg bestätigt.
-- Die reale ERG-Leistung folgt 100/150/200 W plausibel.
-- Trennung erzeugt keinen App-Absturz oder unkontrollierten Widerstand.
-- erneutes Verbinden funktioniert.
-
-Der Spike ist noch kein Nachweis für zuverlässigen Hintergrundbetrieb oder vollständiges
-Offline-Training. Diese Lebenszyklus-Tests folgen erst nach bestandenem FTMS-Grundtest.
-
-## Entwicklung und Prüfung
-
-```bash
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
 flutter build linux --release
+# From repository root:
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
+git diff --check
 ```
 
-Aktueller lokaler Referenzstand: Flutter 3.47.3, Dart 3.13.3.
+GitHub Actions runs on pushes and pull requests, uploads Linux/macOS/Android/Windows
+artifacts, and performs a no-codesign iOS build. Desktop export uses the installed
+package API; non-Linux builds and GitHub-hosted workflow execution are not locally
+verified.

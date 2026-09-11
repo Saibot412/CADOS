@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:cados_ftms_spike/ftms/ftms_protocol.dart';
-import 'package:cados_ftms_spike/ftms/ftms_transport.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_protocol.dart';
+import 'package:cados_ftms_spike/features/trainer/ftms_transport.dart';
 
 class FakeTrainerTransport implements TrainerTransport {
   final scanController = StreamController<FtmsDevice>.broadcast();

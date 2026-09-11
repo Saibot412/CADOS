@@ -3,16 +3,23 @@ import 'dart:typed_data';
 
 import 'package:universal_ble/universal_ble.dart';
 
-import 'ftms_protocol.dart';
-import 'ftms_transport.dart';
+import '../../features/trainer/ftms_protocol.dart';
+import '../../features/trainer/ftms_transport.dart';
+import 'scan_coordinator.dart';
 
 class UniversalBleTrainerTransport implements TrainerTransport {
-  UniversalBleTrainerTransport() {
+  UniversalBleTrainerTransport(this.scanner) {
     UniversalBle.timeout = const Duration(seconds: 10);
     UniversalBle.queueType = QueueType.perDevice;
-    _scanSubscription = UniversalBle.scanStream.listen(_handleScanResult);
+    _scanSubscription = UniversalBle.scanStream.listen(
+      _handleScanResult,
+      onError: (Object error, StackTrace stackTrace) {
+        _log('Bluetooth-Scanstream nicht verfügbar: $error');
+      },
+    );
   }
 
+  final ScanCoordinator scanner;
   final _scanController = StreamController<FtmsDevice>.broadcast();
   final _connectionController =
       StreamController<FtmsConnectionState>.broadcast();
@@ -22,6 +29,7 @@ class UniversalBleTrainerTransport implements TrainerTransport {
   final _controlResponses = StreamController<FtmsControlResponse>.broadcast();
 
   StreamSubscription<BleDevice>? _scanSubscription;
+
   StreamSubscription<bool>? _connectionSubscription;
   StreamSubscription<Uint8List>? _bikeDataSubscription;
   StreamSubscription<Uint8List>? _controlSubscription;
@@ -49,7 +57,7 @@ class UniversalBleTrainerTransport implements TrainerTransport {
 
   void _log(String message) {
     if (!_logController.isClosed) {
-      _logController.add('${DateTime.now().toIso8601String()}  $message');
+      _logController.add(message);
     }
   }
 
@@ -75,25 +83,12 @@ class UniversalBleTrainerTransport implements TrainerTransport {
   @override
   Future<void> startScan() async {
     _seen.clear();
-    await UniversalBle.requestPermissions();
-    final availability = await UniversalBle.getBluetoothAvailabilityState();
-    if (availability != AvailabilityState.poweredOn) {
-      throw StateError('Bluetooth ist nicht eingeschaltet: $availability');
-    }
-    _log('FTMS-Scan gestartet');
-    await UniversalBle.startScan(
-      scanFilter: ScanFilter(withServices: const [FtmsUuids.service]),
-      platformConfig: PlatformConfig(
-        web: WebOptions(optionalServices: const [FtmsUuids.service]),
-      ),
-    );
+    _log('FTMS scan started');
+    await scanner.start(this, FtmsUuids.service);
   }
 
   @override
-  Future<void> stopScan() async {
-    if (await UniversalBle.isScanning()) await UniversalBle.stopScan();
-    _log('Scan beendet');
-  }
+  Future<void> stopScan() => scanner.stop(this);
 
   @override
   Future<void> connect(FtmsDevice selected) async {
@@ -114,7 +109,7 @@ class UniversalBleTrainerTransport implements TrainerTransport {
 
     try {
       await device.connect(
-        autoConnect: true,
+        autoConnect: false,
         platformConfig: ConnectionPlatformConfig(
           apple: AppleConnectionOptions(
             notifyOnConnection: true,
@@ -137,6 +132,9 @@ class UniversalBleTrainerTransport implements TrainerTransport {
       final response = await requestControl();
       if (!response.successful) {
         throw StateError('Trainer verweigert Steuerung: $response');
+      }
+      if (!await device.isConnected) {
+        throw StateError('Trainer disconnected during setup');
       }
       _controlGranted = true;
       _connectionController.add(FtmsConnectionState.connected);
@@ -296,6 +294,8 @@ class UniversalBleTrainerTransport implements TrainerTransport {
         .firstWhere((response) => response.requestOpcode == opcode)
         .timeout(const Duration(seconds: 5));
     _log('Control Write: ${_hex(payload)}');
+    // Attach immediately: the response timeout may precede a slow write failure.
+    unawaited(responseFuture.then<void>((_) {}, onError: (Object _) {}));
     await characteristic.write(payload, withResponse: true);
     return responseFuture;
   }
@@ -321,9 +321,6 @@ class UniversalBleTrainerTransport implements TrainerTransport {
         _log('Trennen meldete: $error');
       }
     }
-    if (!_disposed) {
-      _connectionController.add(FtmsConnectionState.disconnected);
-    }
   }
 
   static String _hex(Iterable<int> bytes) =>
@@ -332,10 +329,15 @@ class UniversalBleTrainerTransport implements TrainerTransport {
   @override
   Future<void> dispose() async {
     if (_disposed) return;
-    await stopScan();
+    try {
+      await stopScan();
+    } catch (e) {
+      _log("Scan shutdown: $e");
+    }
     await disconnect();
     _disposed = true;
     await _scanSubscription?.cancel();
+
     await _scanController.close();
     await _connectionController.close();
     await _measurementController.close();

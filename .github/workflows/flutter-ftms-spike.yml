@@ -2,6 +2,10 @@ name: CADOS Flutter FTMS Spike
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "spike/flutter_ftms/**"
+      - ".github/workflows/flutter-ftms-spike.yml"
   push:
     paths:
       - "spike/flutter_ftms/**"
@@ -17,7 +21,7 @@ jobs:
       run:
         working-directory: spike/flutter_ftms
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.47.3"
@@ -27,6 +31,13 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
       - run: flutter test
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - run: flutter build linux --release
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cados-ftms-spike-linux
+          path: spike/flutter_ftms/build/linux/x64/release/bundle
+          if-no-files-found: error
 
   macos:
     needs: quality
@@ -35,7 +46,7 @@ jobs:
       run:
         working-directory: spike/flutter_ftms
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.47.3"
@@ -48,7 +59,7 @@ jobs:
           APP="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP"
           ditto -c -k --sequesterRsrc --keepParent "$APP" cados-ftms-spike-macos.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cados-ftms-spike-macos
           path: spike/flutter_ftms/cados-ftms-spike-macos.zip
@@ -61,8 +72,8 @@ jobs:
       run:
         working-directory: spike/flutter_ftms
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -73,7 +84,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cados-ftms-spike-android
           path: spike/flutter_ftms/build/app/outputs/flutter-apk/app-release.apk
@@ -86,7 +97,7 @@ jobs:
       run:
         working-directory: spike/flutter_ftms
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.47.3"
@@ -97,8 +108,24 @@ jobs:
       - name: Pack Windows app
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath cados-ftms-spike-windows.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cados-ftms-spike-windows
           path: spike/flutter_ftms/cados-ftms-spike-windows.zip
           if-no-files-found: error
+
+  ios:
+    needs: quality
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: spike/flutter_ftms
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.3"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign

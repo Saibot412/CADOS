@@ -27,6 +27,9 @@ abstract interface class TrainerTransport {
 
   Future<void> startScan();
   Future<void> stopScan();
+
+  /// Completes only after discovery, telemetry/response subscriptions and a
+  /// successful Request Control. Never restores target or starts training.
   Future<void> connect(FtmsDevice device);
   Future<void> disconnect();
   Future<FtmsControlResponse> requestControl();
