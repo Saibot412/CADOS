@@ -73,6 +73,10 @@ Serverinstallation und Betrieb: [server/README.md](server/README.md).
 
 ## Entwicklung
 
+Der isolierte Flutter-/FTMS-Migrationstest liegt unter
+[`spike/flutter_ftms`](spike/flutter_ftms/README.md). Er ist kein produktiver
+CADOS-Client, sondern prüft zuerst die plattformübergreifende Trainersteuerung.
+
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
