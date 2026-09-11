@@ -73,31 +73,48 @@ Serverinstallation und Betrieb: [server/README.md](server/README.md).
 
 ## Entwicklung
 
-Der isolierte Flutter-/FTMS-Migrationstest liegt unter
-[`spike/flutter_ftms`](spike/flutter_ftms/README.md). Er ist kein produktiver
-CADOS-Client. Die Migration-Alpha enthält getrennte Trainer- und
-Herzfrequenz-Controller, BLE-unabhängige Schnittstellen, begrenzten Reconnect mit
-1/2/4/8/16 Sekunden Backoff, gespeicherte Gerätepräferenzen und ein dauerhaftes
-Diagnoseprotokoll mit 1-MiB-Rotation, drei Aufbewahrungsgenerationen und Datei-Export
-unter Linux/Windows/macOS. Nach Trainer-Reconnect
-werden Services/Abonnements und FTMS-Steuerfreigabe neu aufgebaut; Start und
-Zielleistung werden nicht automatisch wiederhergestellt.
+Die CADOS-Flutter-Anwendung liegt unter [`flutter_app`](flutter_app/README.md)
+(Paket `cados_app`). Heute, Workouts, Training und Einstellungen verwenden responsive
+Material-3-Navigation. Anmeldung, sichere Tokenablage und Sitzungswiederherstellung
+nutzen die vorhandenen `/api/v1/auth`-Endpunkte. Die Serveradresse ist in Einstellungen
+konfigurierbar; Standard ist `https://cados.saibot.at`.
 
-Die Struktur trennt `core`, `application`, `features/trainer`,
-`features/heart_rate`, `features/workout`, `infrastructure` und `presentation`.
-Der reine Dart-Workoutkern ist noch nicht mit Trainerbefehlen verbunden. Parität umfasst FTP-Auflösung,
-Steady/Ramp-Ziele, deterministische Blockwechsel, Start/Pause/Resume/Stop/Completion,
-Anfahr- und Übergangsrampen sowie Wattkorrekturen. Adaptive ERG, Trainingsmetriken,
-FTP-Testauswertung, Sessions und Synchronisation sind noch nicht portiert.
-Die genaue Paritätsmatrix und Testbefehle stehen im Flutter-README.
+Reale Sync-Snapshots liefern Profil/FTP, Workoutbibliothek, geplante Einheiten und
+Trainingshistorie. Revisionen, Löschmarkierungen, Freigaben und unbekannte Felder
+bleiben erhalten. Es gibt keine Demo-Daten. Ohne Daten, Netzwerk oder Geräte zeigt
+die App ehrliche Leer-/Fehler-/Verbindungszustände. Kalender-/Workoutbearbeitung bleibt offen. Reale Bibliotheksworkouts und geplante
+Einheiten lassen sich mit ihrem Profil-FTP lokal ausführen. Start wartet auf neue
+positive Leistung; Zielwatt werden begrenzt und höchstens einmal pro Sekunde gesendet.
+Die echte Plan-ID und der ursprüngliche Workoutpayload bleiben an der Einheit.
 
-Der vorhandene Windows-KICKR-CORE-Log bestätigt FTMS-Kommunikation einschließlich
-100 W, Start und Stop. Reale Widerstandsänderungen unter Last bleiben ausdrücklich
-aufgeschoben. Neue HR-Hardware, gleichzeitige Verbindungen, Funk-/Stromausfall und
-native Exportdialoge müssen später auf Geräten validiert werden. Für diesen
-Entwicklungsblock ist kein Fahr- oder Pedaltest nötig; der verletzte Nutzer wird
-nicht zum Treten aufgefordert. Python-Connector und FastAPI/PostgreSQL bleiben
-unverändert.
+Trainer- und HR-Controller mit universal_ble, Backoff 1/2/4/8/16 Sekunden,
+Gerätepräferenzen und dauerhaftem rotiertem Log bleiben erhalten. Diagnostik und
+Dateiexport befinden sich sekundär unter Einstellungen → Diagnostik & Support.
+Nach Trainer-Reconnect werden Abonnements und Steuerfreigabe erneuert; Start und
+Zielleistung werden nicht automatisch gesendet. Der reine Dart-Workoutkern mit
+bestehenden Paritätstests ist über einen gesonderten Sessioncontroller mit der
+Trainersteuerung verbunden. Geräteausfall, veraltete Leistung und App-Hintergrund
+pausieren mit ausdrücklicher Fortsetzung; HR-Ausfall stoppt die Einheit nicht.
+Befehlsfehler werden sichtbar. Wiederherstellung startet niemals automatisch.
+
+Ein atomarer lokaler Journalspeicher sichert etwa alle fünf Sekunden und bei
+Zustandswechseln. Beim Beenden wird dieselbe stabile Session-UUID in die dauerhafte
+Outbox übernommen. Der bestehende POST-Sync-Pfad überträgt die echten Samples;
+fehlende Sensorwerte bleiben leer. Fehlgeschlagene Uploads bleiben über Neustarts
+erhalten und werden nach Anmeldung/Refresh oder manuell wiederholt. Erst passende
+autoritative Bestätigung entfernt die Einheit. Anschließend wird der Katalog samt
+serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellung
+und weitere Details stehen im Flutter-README. Adaptive ERG, lokale vollständige
+Metrik-/FTP-Test-Parität sowie Editorfunktionen sind weiterhin offen.
+
+Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
+Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.
+HR-Werte werden beim ersten Empfang und danach bei jedem 25. Wert protokolliert.
+Physische Widerstandsänderung beim Treten bleibt aufgeschoben. Weitere Geräte,
+native Exportdialoge und Plattform-Lebenszyklen benötigen zusätzliche Validierung.
+Python-Connector und FastAPI/PostgreSQL bleiben unverändert. Die CI führt nur
+Formatierung, Analyse und Tests aus; Builds sind bis zum Abschluss der Migration
+gesperrt und später ausschließlich für Windows vorgesehen.
 
 ```bash
 python3 -m venv .venv

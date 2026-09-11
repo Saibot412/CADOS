@@ -71,3 +71,25 @@ wie jeder andere HRS-Sensor ausgewählt werden; es gibt keine CADOS-ANT+-Bridge.
 
 Automatisierte Prüfungen verwenden simulierte BLE-Geräte und Protokollpakete.
 Für verbindliche Modellzusagen fehlen weiterhin Tests an realen Geräten verschiedener Hersteller.
+
+
+## Flutter-Anwendung: tatsächlich beobachtete Hardware
+
+In `flutter_app/` wurden mit dem realen universal_ble-Pfad KICKR CORE FTMS-
+Befehlsannahme (Request Control, Zielwatt, Start/Stop), gleichzeitiger Garmin-Fenix-
+Herzfrequenzempfang und HR-Reconnect beobachtet. Dies bestätigt die Kommunikation;
+physischer Widerstand beim Treten bleibt ausdrücklich ungetestet und aufgeschoben.
+HR-Diagnostik protokolliert den ersten sowie jeden 25. Wert je Verbindung.
+Andere Modelle/Firmwarestände bleiben gesondert zu validieren. Diese Beobachtungen
+ersetzen keine allgemeine Herstellerfreigabe.
+
+
+Die Flutter-Trainingsausführung nutzt jetzt dieselben realen FTMS-/HR-Controller
+für synchronisierte Workouts. Zielwatt sind auf gemeldeten Leistungsbereich und
+Schritte begrenzt; nur bestätigte Befehle gelten als erfolgreich. Verbindungsverlust,
+veraltete Leistung und Hintergrundbetrieb erzwingen Pause mit ausdrücklichem
+Fortsetzen. HR-Verlust wird als fehlender Puls angezeigt und stoppt das Training nicht.
+Journal/Outbox und Wiederherstellung sind automatisiert getestet. Diese Softwaretests
+sind keine neue Hardwarevalidierung: das tatsächliche Widerstandsverhalten beim
+Treten sowie native Journal-/Lifecycle-/Secure-Storage-Integration auf Windows
+bleiben gesondert zu prüfen. In diesem Arbeitsschritt wurden keine Builds ausgeführt.
