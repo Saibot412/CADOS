@@ -110,6 +110,7 @@ void main() {
 
     expect(harness.session.state, WorkoutState.paused);
     expect(harness.session.effectiveTrainerTarget, confirmed);
+    expect(harness.session.adaptiveReliefWatts, 0);
     expect(harness.session.error, isNotNull);
   });
 

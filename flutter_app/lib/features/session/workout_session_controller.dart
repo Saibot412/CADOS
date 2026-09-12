@@ -84,9 +84,14 @@ class WorkoutSessionController extends ChangeNotifier {
   int? get effectiveTrainerTarget => engine == null ? null : _lastTarget;
   int get adaptiveReliefWatts {
     final current = engine;
-    if (current == null) return 0;
-    final difference =
-        _clamp(current.targetWatts) - _clamp(current.trainerTargetWatts);
+    final confirmed = _lastTarget;
+    if (current == null ||
+        confirmed == null ||
+        state != WorkoutState.running ||
+        !current.adaptiveErgEnabled) {
+      return 0;
+    }
+    final difference = _clamp(current.targetWatts) - confirmed;
     return difference > 0 ? difference : 0;
   }
 
