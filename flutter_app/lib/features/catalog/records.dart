@@ -252,9 +252,21 @@ class Catalog {
       switch (r.kind) {
         case 'profile':
           requiredField<String>('name');
-          if (p['ftp'] != null) requiredField<int>('ftp');
-          if (p['weight_kg'] != null) requiredField<num>('weight_kg');
-          if (p['max_hr'] != null) requiredField<int>('max_hr');
+          final profileName = p['name'] as String;
+          final ftp = p['ftp'];
+          final weight = p['weight_kg'];
+          final maxHr = p['max_hr'];
+          if (profileName.trim().isEmpty ||
+              profileName.length > 200 ||
+              ftp != null && (ftp is! int || ftp < 30 || ftp > 2000) ||
+              weight != null &&
+                  (weight is! num ||
+                      !weight.isFinite ||
+                      weight < 10 ||
+                      weight > 500) ||
+              maxHr != null && (maxHr is! int || maxHr < 50 || maxHr > 250)) {
+            throw const FormatException('Invalid profile.');
+          }
         case 'workout':
           requiredField<String>('name');
           requiredField<List>('blocks');

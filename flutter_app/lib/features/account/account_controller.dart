@@ -127,6 +127,64 @@ class AccountController extends ChangeNotifier {
     catalog = null;
     _token = null;
   });
+  Future<SyncRecord> mutateRecord(
+    Map<String, dynamic> change, {
+    required int expectedGeneration,
+  }) async {
+    SyncRecord? authoritative;
+    await _run(() async {
+      if (_token == null || user == null || catalog == null) {
+        throw const ApiFailure(
+          'Für Änderungen ist eine aktuelle Anmeldung erforderlich.',
+        );
+      }
+      if (syncGeneration != expectedGeneration) {
+        throw const ApiFailure(
+          'Die Kontodaten wurden inzwischen aktualisiert. Bitte neu laden und Änderungen prüfen.',
+          status: 409,
+        );
+      }
+      final candidate = Catalog.fromJson({
+        'records': [change],
+      }).records.single;
+      final reply = Catalog.fromJson(
+        await _api.request(
+          '/sync',
+          token: _token,
+          body: {
+            'changes': [change],
+          },
+        ),
+      );
+      final acknowledgements = reply.records
+          .where((record) => record.id == candidate.id)
+          .toList();
+      if (acknowledgements.length != 1 ||
+          acknowledgements.single.kind != candidate.kind ||
+          acknowledgements.single.shared != candidate.shared ||
+          acknowledgements.single.deleted != candidate.deleted ||
+          acknowledgements.single.revision <= candidate.revision) {
+        throw const ApiFailure(
+          'Änderung wurde vom Server nicht eindeutig bestätigt.',
+        );
+      }
+      await _sync();
+      final refreshed = catalog!.records
+          .where((record) => record.id == candidate.id)
+          .toList();
+      if (refreshed.length != 1 ||
+          refreshed.single.kind != acknowledgements.single.kind ||
+          refreshed.single.revision != acknowledgements.single.revision ||
+          refreshed.single.deleted != acknowledgements.single.deleted) {
+        throw const ApiFailure(
+          'Der aktualisierte Serverstand konnte nicht bestätigt werden.',
+        );
+      }
+      authoritative = refreshed.single;
+    }, propagate: true);
+    return authoritative!;
+  }
+
   Future<void> adoptFtp(String sessionId, int profileRevision) =>
       _run(() async {
         if (_token == null || user == null || catalog == null) {

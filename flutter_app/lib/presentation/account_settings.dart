@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/account/account_controller.dart';
+import 'profile_editor.dart';
 
 class AccountSettings extends StatefulWidget {
   const AccountSettings({
@@ -49,7 +50,25 @@ class _AccountSettingsState extends State<AccountSettings> {
         if (a.user != null) ...[
           Text(a.user!.email),
           for (final profile in a.catalog?.profiles ?? [])
-            Text('${profile.name} · FTP ${profile.ftp ?? '–'} W'),
+            Card(
+              child: ListTile(
+                title: Text(profile.name),
+                subtitle: Text(
+                  'FTP ${profile.ftp ?? '–'} W · Gewicht ${profile.weightKg ?? '–'} kg · HFmax ${profile.maxHr ?? '–'} bpm',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: a.busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              ProfileEditorPage(account: a, profile: profile),
+                        ),
+                      ),
+              ),
+            ),
+          if (a.catalog != null && a.catalog!.profiles.isEmpty)
+            const Text('Kein Trainingsprofil im Konto vorhanden.'),
           OutlinedButton(
             onPressed: a.busy ? null : a.logout,
             child: const Text('Abmelden'),

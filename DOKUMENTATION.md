@@ -91,6 +91,15 @@ Einheiten lassen sich mit ihrem Profil-FTP lokal ausführen. Start wartet auf ne
 positive Leistung; Zielwatt werden begrenzt und höchstens einmal pro Sekunde gesendet.
 Die echte Plan-ID und der ursprüngliche Workoutpayload bleiben an der Einheit.
 
+In Einstellungen öffnet das reale synchronisierte Profil einen responsiven Editor
+für Name, FTP, optionales Gewicht und optionalen Maximalpuls. Änderungen verwenden
+die aktuelle Datensatzrevision, bewahren unbekannte Payload-Felder und gelten erst
+nach POST-Bestätigung und erneutem GET-Snapshot als gespeichert. Konflikte werden
+nicht überschrieben. Aus der gespeicherten FTP entstehen dieselben sieben
+Leistungszonen und Half-up-Grenzen wie in der Python-Zonenlogik. Falls ein Maximalpuls
+vorhanden ist, zeigt die App zusätzlich fünf zusammenhängende HFmax-Zonen; andernfalls
+weist sie transparent auf den fehlenden Wert hin.
+
 Trainer- und HR-Controller mit universal_ble, Backoff 1/2/4/8/16 Sekunden,
 Gerätepräferenzen und dauerhaftem rotiertem Log bleiben erhalten. Diagnostik und
 Dateiexport befinden sich sekundär unter Einstellungen → Diagnostik & Support.
@@ -111,7 +120,7 @@ serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellu
 und weitere Details stehen im Flutter-README. Lokale zeitgewichtete Trainingsmetriken,
 Normalized Power/IF/TSS und die gemessene FTP-Rampentest-Auswertung sind integriert
 und werden aus dem Journal wiederhergestellt. Adaptive ERG, Blocknavigation,
-Profil-/Zonenbearbeitung und Editorfunktionen sind weiterhin offen.
+Workout-/Kalendereditoren sind weiterhin offen.
 
 Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
 Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.

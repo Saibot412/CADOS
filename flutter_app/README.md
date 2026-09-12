@@ -26,7 +26,12 @@ Synchronized history entries open a responsive detail view with their real timin
 metrics, sample count and FTP-test assessment. An eligible FTP estimate can update
 the sole current profile only after an explicit confirmation; the request carries
 the current profile revision and reloads the authoritative account snapshot.
-Profile, workout and calendar editing remain deferred.
+Profile name, FTP, optional weight and optional maximum heart rate can now be edited
+through the same revision-bound sync API. Unknown payload fields are retained, and
+success is shown only after acknowledgement plus an authoritative snapshot refresh.
+The profile screen derives the seven Python-compatible FTP power zones and five
+contiguous maximum-heart-rate zones locally; absent anchors remain visibly absent.
+Workout and calendar editing remain deferred.
 Absent network/data/devices show explicit unavailable/empty/disconnected states.
 
 ## Architecture
@@ -100,8 +105,8 @@ are surfaced by export.
   a ramp. Disconnect pauses without counting missing time. Manual pause/resume,
   stop/restart, cumulative watt adjustment and target clamp 0–32767 are covered.
 
-This is **not full Python WorkoutEngine parity**: adaptive ERG, block navigation,
-profile editing and zones remain deferred. Time-weighted local metrics, FTP-test
+This is **not full Python WorkoutEngine parity**: adaptive ERG and block navigation
+remain deferred. Time-weighted local metrics, FTP-test
 cadence termination, local FTP-test assessment and normalized power/TSS summaries
 now use submitted real samples. The server still independently verifies and can
 augment FTP-test results. Session execution, journal
