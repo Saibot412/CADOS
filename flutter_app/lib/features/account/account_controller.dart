@@ -127,6 +127,24 @@ class AccountController extends ChangeNotifier {
     catalog = null;
     _token = null;
   });
+  Future<void> adoptFtp(String sessionId, int profileRevision) =>
+      _run(() async {
+        if (_token == null || user == null || catalog == null) {
+          throw const ApiFailure(
+            'Für die FTP-Übernahme ist eine Anmeldung erforderlich.',
+          );
+        }
+        await _api.request(
+          '/sessions/$sessionId/ftp',
+          token: _token,
+          body: {'profile_revision': profileRevision},
+        );
+        user = AccountUser.fromJson(
+          await _api.request('/auth/me', token: _token),
+        );
+        await _sync();
+      }, propagate: true);
+
   Future<void> uploadSession(Map<String, dynamic> entry) => _run(() async {
     if (_token == null ||
         user == null ||

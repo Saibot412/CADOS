@@ -82,7 +82,11 @@ konfigurierbar; Standard ist `https://cados.saibot.at`.
 Reale Sync-Snapshots liefern Profil/FTP, Workoutbibliothek, geplante Einheiten und
 Trainingshistorie. Revisionen, Löschmarkierungen, Freigaben und unbekannte Felder
 bleiben erhalten. Es gibt keine Demo-Daten. Ohne Daten, Netzwerk oder Geräte zeigt
-die App ehrliche Leer-/Fehler-/Verbindungszustände. Kalender-/Workoutbearbeitung bleibt offen. Reale Bibliotheksworkouts und geplante
+die App ehrliche Leer-/Fehler-/Verbindungszustände. Synchronisierte Trainings öffnen
+eine responsive Ergebnisansicht mit echten Zeiten, Metriken, Messwertanzahl und
+FTP-Testauswertung. Eine neue FTP wird nur nach ausdrücklicher Bestätigung und mit
+der aktuellen Profilrevision übernommen; danach lädt die App den autoritativen
+Serverstand neu. Kalender-/Workoutbearbeitung bleibt offen. Reale Bibliotheksworkouts und geplante
 Einheiten lassen sich mit ihrem Profil-FTP lokal ausführen. Start wartet auf neue
 positive Leistung; Zielwatt werden begrenzt und höchstens einmal pro Sekunde gesendet.
 Die echte Plan-ID und der ursprüngliche Workoutpayload bleiben an der Einheit.

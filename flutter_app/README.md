@@ -22,6 +22,10 @@ shared, publisher and unknown fields. Tombstones are excluded from presentation;
 only completed sessions with a matching plan_id complete a plan, as in static JS.
 Unknown record kinds remain preserved. Actual selected workouts now execute locally
 and completed/stopped sessions upload through the existing POST sync contract.
+Synchronized history entries open a responsive detail view with their real timing,
+metrics, sample count and FTP-test assessment. An eligible FTP estimate can update
+the sole current profile only after an explicit confirmation; the request carries
+the current profile revision and reloads the authoritative account snapshot.
 Profile, workout and calendar editing remain deferred.
 Absent network/data/devices show explicit unavailable/empty/disconnected states.
 
@@ -47,6 +51,7 @@ Absent network/data/devices show explicit unavailable/empty/disconnected states.
   through Flutter's `file_selector`. The diagnostic port is widget-independent.
 - `lib/features/account`: API ports/config and observable session state.
 - `lib/features/catalog`: pure Dart typed server records with original payloads.
+- `lib/features/session`: durable execution/sync plus explicit FTP-adoption state.
 - `lib/infrastructure/account`: HTTP, secure tokens and atomic server preferences.
 - `lib/presentation`: responsive shell, account/catalog screens and device panels.
   Diagnostics and export are secondary support content in Einstellungen.

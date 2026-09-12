@@ -82,10 +82,146 @@ class SessionRecord {
   String get workoutName => record.payload['workout_name'] as String;
   DateTime get timestamp =>
       DateTime.parse(record.payload['timestamp'] as String);
+  DateTime? get startedAt => _optionalDateTime('started_at');
   int get duration => record.payload['duration_sec'] as int;
+  int? get workoutElapsedSec => record.payload['workout_elapsed_sec'] as int?;
+  int? get ftpWatts => record.payload['ftp_watts'] as int?;
+  String? get workoutFileName => record.payload['workout_file_name'] as String?;
+  Map<String, dynamic>? get workoutPayload =>
+      record.payload['workout_payload'] as Map<String, dynamic>?;
+  String? get trainerSource => record.payload['trainer_source'] as String?;
   Map<String, dynamic>? get metrics =>
       record.payload['metrics'] as Map<String, dynamic>?;
   List<dynamic>? get samples => record.payload['samples'] as List?;
+  Map<String, dynamic>? get ftpTestResult =>
+      record.payload['ftp_test_result'] as Map<String, dynamic>?;
+
+  DateTime? _optionalDateTime(String key) {
+    final value = record.payload[key] as String?;
+    return value == null ? null : DateTime.parse(value);
+  }
+}
+
+bool _isValidDateTime(Object? value) {
+  if (value is! String || DateTime.tryParse(value) == null) return false;
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
+  if (match == null) return false;
+  final year = int.parse(match.group(1)!);
+  final month = int.parse(match.group(2)!);
+  final day = int.parse(match.group(3)!);
+  final calendarDate = DateTime.utc(year, month, day);
+  return calendarDate.year == year &&
+      calendarDate.month == month &&
+      calendarDate.day == day;
+}
+
+void _validateSessionPayload(Map<String, dynamic> payload) {
+  void optionalField<T>(String key) {
+    final value = payload[key];
+    if (value != null && value is! T) {
+      throw const FormatException('Invalid session field.');
+    }
+  }
+
+  for (final key in ['plan_id', 'workout_file_name', 'trainer_source']) {
+    optionalField<String>(key);
+  }
+  optionalField<int>('workout_elapsed_sec');
+  optionalField<int>('ftp_watts');
+  optionalField<Map<String, dynamic>>('workout_payload');
+  optionalField<Map<String, dynamic>>('metrics');
+  optionalField<List>('samples');
+  optionalField<Map<String, dynamic>>('ftp_test_result');
+
+  if (!_isValidDateTime(payload['timestamp']) ||
+      payload['started_at'] != null &&
+          !_isValidDateTime(payload['started_at'])) {
+    throw const FormatException('Invalid session timestamp.');
+  }
+  final duration = payload['duration_sec'] as int;
+  final workoutElapsed = payload['workout_elapsed_sec'] as int?;
+  final ftp = payload['ftp_watts'] as int?;
+  if (duration < 0 ||
+      duration > 86400 ||
+      workoutElapsed != null && workoutElapsed < 0 ||
+      ftp != null && (ftp < 30 || ftp > 2000)) {
+    throw const FormatException('Invalid session number.');
+  }
+
+  final metrics = payload['metrics'] as Map<String, dynamic>?;
+  if (metrics != null) {
+    const numericMetricFields = [
+      'max_watts',
+      'avg_watts',
+      'max_cadence',
+      'avg_cadence',
+      'max_heart_rate',
+      'avg_heart_rate',
+      'best_minute_watts',
+      'work_kj',
+      'normalized_power',
+      'intensity_factor',
+      'tss',
+      'calories',
+    ];
+    for (final key in numericMetricFields) {
+      final value = metrics[key];
+      if (value != null && (value is! num || !value.isFinite)) {
+        throw const FormatException('Invalid session metrics.');
+      }
+    }
+  }
+
+  final samples = payload['samples'] as List?;
+  if (samples != null) {
+    const numericFields = [
+      'elapsed_sec',
+      'duration_sec',
+      'workout_elapsed_sec',
+      'watts',
+      'target_watts',
+      'cadence',
+      'heart_rate',
+      'segment',
+      'block_index',
+    ];
+    for (final sample in samples) {
+      if (sample is! Map<String, dynamic>) {
+        throw const FormatException('Invalid session sample.');
+      }
+      for (final key in numericFields) {
+        final value = sample[key];
+        if (value != null && (value is! num || !value.isFinite)) {
+          throw const FormatException('Invalid session sample number.');
+        }
+      }
+    }
+  }
+
+  final result = payload['ftp_test_result'] as Map<String, dynamic>?;
+  if (result == null) return;
+  final oldFtp = result['old_ftp'];
+  final method = result['method'];
+  final eligible = result['eligible'];
+  if (!result.containsKey('old_ftp') ||
+      oldFtp != null && oldFtp is! int ||
+      method is! String ||
+      method.isEmpty ||
+      eligible is! bool) {
+    throw const FormatException('Invalid FTP test result.');
+  }
+  if (eligible) {
+    if (result['best_minute_watts'] is! int ||
+        result['estimated_ftp'] is! int) {
+      throw const FormatException('Invalid FTP test result.');
+    }
+  } else if (result['reason'] is! String ||
+      (result['reason'] as String).isEmpty) {
+    throw const FormatException('Invalid FTP test result.');
+  }
+  if (result['applied_at'] != null && !_isValidDateTime(result['applied_at'])) {
+    throw const FormatException('Invalid FTP test result timestamp.');
+  }
 }
 
 class Catalog {
@@ -144,14 +280,7 @@ class Catalog {
           requiredField<String>('workout_name');
           requiredField<int>('duration_sec');
           requiredField<String>('timestamp');
-          if (p['plan_id'] != null) requiredField<String>('plan_id');
-          if (p['metrics'] != null) {
-            requiredField<Map<String, dynamic>>('metrics');
-          }
-          if (p['samples'] != null) requiredField<List>('samples');
-          if (DateTime.tryParse(p['timestamp'] as String) == null) {
-            throw const FormatException('Invalid session timestamp.');
-          }
+          _validateSessionPayload(p);
       }
     }
   }

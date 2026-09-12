@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/account/account_controller.dart';
 import '../features/catalog/records.dart';
+import 'session_detail.dart';
 
 class CatalogPage extends StatelessWidget {
   const CatalogPage({
@@ -120,6 +121,13 @@ class CatalogPage extends StatelessWidget {
                     : session.status == 'stopped'
                     ? 'Beendet'
                     : 'Status unbekannt'}',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      SessionDetailPage(session: session, account: account),
+                ),
               ),
             ),
         ],
