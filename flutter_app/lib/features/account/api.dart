@@ -61,6 +61,42 @@ class CadosApi {
   CadosApi(this.transport, this.config);
   final ApiTransport transport;
   final ApiConfig config;
+  Future<Map<String, dynamic>> uploadText(
+    String path, {
+    required String token,
+    required String content,
+    required String contentType,
+    required Map<String, String> query,
+  }) async {
+    HttpReply reply;
+    try {
+      reply = await transport
+          .send('POST', config.endpoint(path).replace(queryParameters: query), {
+            'Content-Type': contentType,
+            'X-Cados-Request': '1',
+            'Authorization': 'Bearer $token',
+          }, content)
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      throw const ApiFailure(
+        'Server nicht erreichbar. Verbindung prüfen und erneut versuchen.',
+      );
+    }
+    if (reply.status < 200 || reply.status >= 300) {
+      throw ApiFailure(
+        reply.status == 401
+            ? 'Anmeldung abgelaufen.'
+            : 'Import fehlgeschlagen (${reply.status}).',
+        status: reply.status,
+      );
+    }
+    try {
+      return jsonDecode(reply.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw const ApiFailure('Ungültige Serverantwort.');
+    }
+  }
+
   Future<Map<String, dynamic>> request(
     String path, {
     String? token,

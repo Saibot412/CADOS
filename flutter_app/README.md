@@ -31,7 +31,17 @@ through the same revision-bound sync API. Unknown payload fields are retained, a
 success is shown only after acknowledgement plus an authoritative snapshot refresh.
 The profile screen derives the seven Python-compatible FTP power zones and five
 contiguous maximum-heart-rate zones locally; absent anchors remain visibly absent.
-Workout and calendar editing remain deferred.
+The workout library now creates, copies, edits and deliberately deletes real workout
+records through revision- and generation-bound sync mutations. Its responsive editor
+supports steady and ramp blocks, ordering, duration, cadence, absolute watts and FTP
+percent targets plus a locally derived power preview. Unknown metadata and block fields,
+including dormant absolute targets behind FTP-percent targets, survive edits. Shared
+workouts are read-only and can only become new private copies. Dirty editors require an
+explicit discard decision. JSON and ZWO files up to 2 MB use the native file picker and
+are sent as raw text to authenticated `/api/v1/import`; successful import opens only the
+authoritative refreshed workout. Deletes require confirmation, upload a tombstone with
+the current revision and do not alter historical sessions. Calendar editing remains
+deferred.
 Absent network/data/devices show explicit unavailable/empty/disconnected states.
 
 ## Architecture
@@ -45,8 +55,9 @@ Absent network/data/devices show explicit unavailable/empty/disconnected states.
 - `lib/features/heart_rate`: plugin-independent HR transport, measurement parser
   and separate controller. Scan `180D`, explicitly select a sensor, subscribe
   `2A37`; decode 8/16-bit little-endian BPM and ignore optional trailing fields.
-- `lib/features/workout`: pure Dart models and deterministic engine. No Flutter,
-  BLE, timers, persistence, network or trainer commands.
+- `lib/features/workout`: pure Dart execution and editable draft models, strict workout
+  validation, deterministic engine and an import-state controller. Domain models issue
+  no BLE, timer, persistence or trainer commands.
 - `lib/infrastructure/ble`: universal_ble adapters and shared scan ownership.
   Only one scan runs at once; trainer and HR can remain connected together.
   Stream routing uses per-device subscriptions, not global callback replacement.

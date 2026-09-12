@@ -86,7 +86,7 @@ die App ehrliche Leer-/Fehler-/Verbindungszustände. Synchronisierte Trainings �
 eine responsive Ergebnisansicht mit echten Zeiten, Metriken, Messwertanzahl und
 FTP-Testauswertung. Eine neue FTP wird nur nach ausdrücklicher Bestätigung und mit
 der aktuellen Profilrevision übernommen; danach lädt die App den autoritativen
-Serverstand neu. Kalender-/Workoutbearbeitung bleibt offen. Reale Bibliotheksworkouts und geplante
+Serverstand neu. Reale Bibliotheksworkouts und geplante
 Einheiten lassen sich mit ihrem Profil-FTP lokal ausführen. Start wartet auf neue
 positive Leistung; Zielwatt werden begrenzt und höchstens einmal pro Sekunde gesendet.
 Die echte Plan-ID und der ursprüngliche Workoutpayload bleiben an der Einheit.
@@ -99,6 +99,24 @@ nicht überschrieben. Aus der gespeicherten FTP entstehen dieselben sieben
 Leistungszonen und Half-up-Grenzen wie in der Python-Zonenlogik. Falls ein Maximalpuls
 vorhanden ist, zeigt die App zusätzlich fünf zusammenhängende HFmax-Zonen; andernfalls
 weist sie transparent auf den fehlenden Wert hin.
+
+Die Workoutbibliothek besitzt einen responsiven Material-3-Editor für konstante und
+Rampenblöcke. Neue Workouts starten mit Revision 0; private Workouts werden mit ihrer
+aktuellen Revision bearbeitet, während geteilte Workouts ausschließlich als neue
+private Kopie gespeichert werden können. Blockreihenfolge, Dauer, Kadenz sowie Watt-
+und FTP-Prozentziele sind editierbar. Die Vorschau wird lokal aus dem validierten
+Domainmodell und der echten Profil-FTP berechnet. Unbekannte Metadaten, Blockfelder und
+inaktive absolute Wattwerte hinter Prozentzielen bleiben erhalten. Ungültige Werte,
+mehr als 2000 Blöcke oder über 24 Stunden Gesamtdauer werden vor dem Netzwerkzugriff
+abgelehnt; nicht gespeicherte Änderungen benötigen vor dem Verlassen eine Bestätigung.
+
+JSON- und ZWO-Dateien werden über den nativen Dateidialog ausgewählt, lokal auf Endung
+und maximal 2 MB geprüft und unverändert an `/api/v1/import` übertragen. Dateiinhalte
+und Tokens werden nicht protokolliert. Erst nach Serverbestätigung und erneutem
+autoritativen Snapshot öffnet die App das importierte Workout. Löschen erfordert eine
+Bestätigung und erzeugt einen revisionsgebundenen Tombstone; historische Sessions
+bleiben unverändert. HTTP-/Netzwerkfehler und Revisionskonflikte werden sichtbar, nie
+als Erfolg behandelt. Die Kalenderbearbeitung bleibt offen.
 
 Trainer- und HR-Controller mit universal_ble, Backoff 1/2/4/8/16 Sekunden,
 Gerätepräferenzen und dauerhaftem rotiertem Log bleiben erhalten. Diagnostik und
@@ -119,8 +137,8 @@ autoritative Bestätigung entfernt die Einheit. Anschließend wird der Katalog s
 serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellung
 und weitere Details stehen im Flutter-README. Lokale zeitgewichtete Trainingsmetriken,
 Normalized Power/IF/TSS und die gemessene FTP-Rampentest-Auswertung sind integriert
-und werden aus dem Journal wiederhergestellt. Adaptive ERG, Blocknavigation,
-Workout-/Kalendereditoren sind weiterhin offen.
+und werden aus dem Journal wiederhergestellt. Adaptive ERG, Blocknavigation und der
+Kalendereditor sind weiterhin offen.
 
 Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
 Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.

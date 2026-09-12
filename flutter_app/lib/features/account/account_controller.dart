@@ -185,6 +185,55 @@ class AccountController extends ChangeNotifier {
     return authoritative!;
   }
 
+  Future<WorkoutRecord> importWorkout({
+    required String filename,
+    required String content,
+    required String contentType,
+    required int expectedGeneration,
+  }) async {
+    WorkoutRecord? authoritative;
+    await _run(() async {
+      if (_token == null || user == null || catalog == null) {
+        throw const ApiFailure(
+          'Für den Import ist eine aktuelle Anmeldung erforderlich.',
+        );
+      }
+      if (syncGeneration != expectedGeneration) {
+        throw const ApiFailure(
+          'Die Workoutbibliothek wurde inzwischen aktualisiert. Bitte neu laden.',
+          status: 409,
+        );
+      }
+      final reply = Catalog.fromJson(
+        await _api.uploadText(
+          '/import',
+          token: _token!,
+          content: content,
+          contentType: contentType,
+          query: {'filename': filename},
+        ),
+      );
+      if (reply.workouts.length != 1 || reply.records.length != 1) {
+        throw const ApiFailure(
+          'Import wurde vom Server nicht eindeutig bestätigt.',
+        );
+      }
+      final acknowledged = reply.workouts.single;
+      await _sync();
+      final refreshed = catalog!.workouts
+          .where((workout) => workout.record.id == acknowledged.record.id)
+          .toList();
+      if (refreshed.length != 1 ||
+          refreshed.single.record.revision != acknowledged.record.revision) {
+        throw const ApiFailure(
+          'Das importierte Workout fehlt im aktualisierten Serverstand.',
+        );
+      }
+      authoritative = refreshed.single;
+    }, propagate: true);
+    return authoritative!;
+  }
+
   Future<void> adoptFtp(String sessionId, int profileRevision) =>
       _run(() async {
         if (_token == null || user == null || catalog == null) {
