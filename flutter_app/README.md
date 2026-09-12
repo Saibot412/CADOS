@@ -95,10 +95,11 @@ are surfaced by export.
   a ramp. Disconnect pauses without counting missing time. Manual pause/resume,
   stop/restart, cumulative watt adjustment and target clamp 0–32767 are covered.
 
-This is **not full Python WorkoutEngine parity**: adaptive ERG, metrics, FTP-test
-cadence termination, local FTP-test assessment, normalized power/TSS summaries,
-block navigation, profile editing and zones remain deferred. The server can still
-derive FTP-test results from submitted real samples. Session execution, journal
+This is **not full Python WorkoutEngine parity**: adaptive ERG, block navigation,
+profile editing and zones remain deferred. Time-weighted local metrics, FTP-test
+cadence termination, local FTP-test assessment and normalized power/TSS summaries
+now use submitted real samples. The server still independently verifies and can
+augment FTP-test results. Session execution, journal
 and acknowledgement are now integrated as described below. The Dart constructor rejects empty/nonpositive-duration blocks
 and nonfinite inputs instead of accepting malformed templates. No rider input or
 wall-clock timer is needed to execute these tests.
@@ -151,9 +152,15 @@ erhalten, bis erneut verbunden und beendet wird.
 Samples verwenden die Python-Felder `segment`, `elapsed_sec`, `duration_sec`,
 `workout_elapsed_sec`, `watts`, `cadence`, `heart_rate`, `target_watts`, ergänzt um
 `block_index`. Pausenzeiten werden nicht als gefahrene Zeit gezählt. Fehlende Kadenz/
-HR bleiben null. Start-/Abschlusszeitstempel stehen im Sessionpayload. Zusätzliche
-Trainingsmetriken werden nicht erfunden; `metrics` bleibt zunächst leer, der Server
-kann `max_heart_rate` und FTP-Testergebnisse ergänzen.
+HR bleiben null. Start-/Abschlusszeitstempel stehen im Sessionpayload. Die App
+berechnet aus realen Samples tick-unabhängig Durchschnitt und Maximum für Leistung,
+Kadenz und Herzfrequenz sowie beste Minute, mechanische Arbeit, Normalized Power,
+Intensity Factor und TSS. Der vollständige Messverlauf rekonstruiert diese Werte
+nach einer Wiederherstellung; Pausen unterbrechen gleitende Leistungsfenster.
+FTP-Rampentests enden nur im Step-/Stufe-Teil nach zuvor gemessener positiver Kadenz,
+nicht bei fehlender Kadenz. Die lokale 75-%-Auswertung verwendet ausschließlich die
+beste zusammenhängende Minute gemessener Leistung aus diesem Belastungsteil. Der
+Server prüft und ergänzt die Auswertung weiterhin autoritativ.
 
 Outbox-Uploads sind an ursprüngliches Konto und Server gebunden. POST `/api/v1/sync`
 sendet `{changes:[record]}` mit `kind=session`, `shared=false`, `deleted=false`,

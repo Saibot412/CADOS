@@ -20,7 +20,12 @@ class WorkoutEngine {
   double elapsed = 0, _zero = 0, _ramp = 0, _transition = 0;
   int adjustment = 0, _lastIndex = -1, _lastTarget = 0;
   int? _transitionFrom;
-  bool ramping = false, autoPaused = false;
+  bool ramping = false, autoPaused = false, _ftpCadenceSeen = false;
+  bool get isFtpTest {
+    final name = workout.name.toLowerCase();
+    return name.contains('ftp') && name.contains('ramp');
+  }
+
   int get blockIndex => workout.locate(elapsed).$1;
   int? get targetCadence => workout.locate(elapsed).$2.cadence;
   int get targetWatts {
@@ -55,6 +60,7 @@ class WorkoutEngine {
     _transitionFrom = null;
     ramping = false;
     autoPaused = false;
+    _ftpCadenceSeen = false;
     state = WorkoutState.waitingForPedal;
   }
 
@@ -92,7 +98,12 @@ class WorkoutEngine {
     }
   }
 
-  void tick(double dt, {required bool connected, required int currentWatts}) {
+  void tick(
+    double dt, {
+    required bool connected,
+    required int currentWatts,
+    double? currentCadence,
+  }) {
     if (!dt.isFinite) throw ArgumentError('Non-finite tick');
     dt = math.max(0, dt);
     if (state == WorkoutState.running && (!connected || dt > 5)) {
@@ -115,6 +126,18 @@ class WorkoutEngine {
       return;
     }
     if (state != WorkoutState.running) return;
+    final label = workout.locate(elapsed).$2.label.toLowerCase();
+    final inTestStage =
+        isFtpTest && (label.startsWith('step ') || label.startsWith('stufe '));
+    if (inTestStage && currentCadence != null) {
+      if (currentCadence > 0) {
+        _ftpCadenceSeen = true;
+      } else if (currentCadence == 0 && _ftpCadenceSeen) {
+        state = WorkoutState.completed;
+        ramping = false;
+        return;
+      }
+    }
     dt = math.min(dt, workout.duration - elapsed);
     if (currentWatts <= 0) {
       dt = math.min(dt, math.max(0, 2 - _zero));
@@ -131,6 +154,25 @@ class WorkoutEngine {
       autoPaused = true;
       ramping = false;
       _transitionFrom = null;
+    }
+  }
+
+  /// Recovery keeps cadence-finish state without issuing commands or advancing.
+  void restoreFtpCadenceSeen(Iterable<Map<String, dynamic>> samples) {
+    if (!isFtpTest) return;
+    for (final sample in samples) {
+      final elapsedValue = sample['workout_elapsed_sec'];
+      final cadence = sample['cadence'];
+      if (elapsedValue is! num || cadence is! num || cadence <= 0) continue;
+      final label = workout
+          .locate(elapsedValue.toDouble())
+          .$2
+          .label
+          .toLowerCase();
+      if (label.startsWith('step ') || label.startsWith('stufe ')) {
+        _ftpCadenceSeen = true;
+        return;
+      }
     }
   }
 

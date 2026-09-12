@@ -26,6 +26,8 @@ class TrainingScreen extends StatelessWidget {
     builder: (context, _) {
       final engine = session.engine;
       final workout = engine?.workout;
+      final metrics = session.metrics;
+      final ftpTest = session.completedFtpTest;
       final enabled = !session.busy;
       return ListView(
         padding: const EdgeInsets.all(24),
@@ -145,6 +147,67 @@ class TrainingScreen extends StatelessWidget {
               ),
             ],
           ),
+          if (metrics != null) ...[
+            const SizedBox(height: 20),
+            Text(
+              'Trainingsmetriken',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 24,
+              runSpacing: 16,
+              children: [
+                _metric('Ø Leistung', '${metrics['avg_watts']} W'),
+                _metric('Max. Leistung', '${metrics['max_watts']} W'),
+                _metric('Normalized Power', '${metrics['normalized_power']} W'),
+                _metric(
+                  'Intensity Factor',
+                  _decimal(metrics['intensity_factor'], 2),
+                ),
+                _metric('TSS', _decimal(metrics['tss'], 1)),
+                _metric('Arbeit', '${_decimal(metrics['work_kj'], 1)} kJ'),
+                _metric('Beste Minute', '${metrics['best_minute_watts']} W'),
+                _metric('Ø Kadenz', '${metrics['avg_cadence']} rpm'),
+                _metric('Max. Kadenz', '${metrics['max_cadence']} rpm'),
+                _metric('Ø Herzfrequenz', '${metrics['avg_heart_rate']} bpm'),
+                _metric(
+                  'Max. Herzfrequenz',
+                  '${metrics['max_heart_rate']} bpm',
+                ),
+              ],
+            ),
+          ],
+          if (ftpTest != null) ...[
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FTP-Rampentest',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (ftpTest['eligible'] == true) ...[
+                      Text(
+                        'Beste gemessene Minute: ${ftpTest['best_minute_watts']} W',
+                      ),
+                      Text('Geschätzte FTP: ${ftpTest['estimated_ftp']} W'),
+                      const Text(
+                        'Die Profiländerung erfolgt erst nach Bestätigung.',
+                      ),
+                    ] else
+                      Text(
+                        ftpTest['reason']?.toString() ??
+                            'Keine belastbare FTP-Auswertung verfügbar.',
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (workout != null) ...[
             const SizedBox(height: 20),
             Text(
@@ -233,4 +296,7 @@ class TrainingScreen extends StatelessWidget {
       Text(value, style: const TextStyle(fontSize: 24)),
     ],
   );
+
+  String _decimal(num? value, int places) =>
+      value == null ? '–' : value.toStringAsFixed(places);
 }

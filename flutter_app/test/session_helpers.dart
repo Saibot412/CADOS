@@ -45,7 +45,11 @@ Catalog testCatalog({int duration = 20}) => Catalog.fromJson({
       'ftp': 250,
     }),
     record('ae2b4ea1-7d26-458e-b2c6-a8c7844ebf3d', 'plan', {
-      'date': '2026-09-11',
+      // Keep the UI fixture upcoming instead of expiring with wall-clock time.
+      'date': DateTime.now()
+          .add(const Duration(days: 1))
+          .toIso8601String()
+          .substring(0, 10),
       'workout_id': '065adcb9-77e1-46c3-809b-2c4d2ea50446',
       'workout_name': 'Server workout',
     }),
@@ -208,16 +212,20 @@ class SessionHarness {
     );
   }
 
-  Future<void> measurement(int watts) async {
+  Future<void> measurement(int watts, {double? cadence = 91.5}) async {
     transport.measurementController.add(
-      IndoorBikeMeasurement(powerWatts: watts, cadenceRpm: 91.5),
+      IndoorBikeMeasurement(powerWatts: watts, cadenceRpm: cadence),
     );
     await Future<void>.delayed(Duration.zero);
   }
 
-  Future<void> step({int? watts = 180, int ms = 1000}) async {
+  Future<void> step({
+    int? watts = 180,
+    int ms = 1000,
+    double? cadence = 91.5,
+  }) async {
     clock.advance(ms);
-    if (watts != null) await measurement(watts);
+    if (watts != null) await measurement(watts, cadence: cadence);
     await session.tick();
   }
 

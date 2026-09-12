@@ -24,8 +24,14 @@ void ride(
   WorkoutEngine e,
   double dt, {
   int watts = 200,
+  double? cadence,
   bool connected = true,
-}) => e.tick(dt, connected: connected, currentWatts: watts);
+}) => e.tick(
+  dt,
+  connected: connected,
+  currentWatts: watts,
+  currentCadence: cadence,
+);
 void main() {
   for (final row in <(int?, int?, int)>[
     (null, null, 200),
@@ -195,6 +201,43 @@ void main() {
     final adjustment = e.adjustment;
     e.adjustTarget(1);
     expect(e.adjustment, adjustment);
+  });
+  test('FTP ramp cadence drop only completes a recognized test stage', () {
+    Workout ftpRamp(String name) => Workout(name, const [
+      WorkoutBlock(
+        kind: BlockKind.steady,
+        label: 'Warmup',
+        duration: 10,
+        targetWatts: 150,
+      ),
+      WorkoutBlock(
+        kind: BlockKind.steady,
+        label: 'Step 1',
+        duration: 120,
+        targetWatts: 300,
+      ),
+    ]);
+
+    final test = WorkoutEngine(ftpRamp('FTP Ramp Test'))..start();
+    ride(test, .25, cadence: 90);
+    test.elapsed = 10;
+    ride(test, 1, watts: 300, cadence: 90);
+    final elapsed = test.elapsed;
+    ride(test, .25, watts: 300, cadence: 0);
+    expect(test.state, WorkoutState.completed);
+    expect(test.elapsed, elapsed);
+
+    for (final entry in [
+      (ftpRamp('FTP Ramp Test'), null),
+      (ftpRamp('FTP Ramp Test'), 0.0),
+      (ftpRamp('Regular workout'), 0.0),
+    ]) {
+      final engine = WorkoutEngine(entry.$1)..start();
+      ride(engine, .25, cadence: 90);
+      engine.elapsed = 10;
+      ride(engine, 1, watts: 300, cadence: entry.$2);
+      expect(engine.state, WorkoutState.running);
+    }
   });
   test(
     'negative ticks clamp, invalid ticks reject and invalid workouts reject',

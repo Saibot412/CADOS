@@ -3,6 +3,8 @@ import 'dart:math';
 
 import '../workout/workout.dart';
 import '../workout/workout_parser.dart';
+import 'session_analysis.dart';
+import 'training_metrics.dart';
 
 String sessionUuid() {
   final random = Random.secure();
@@ -33,6 +35,7 @@ class SessionData {
   final String? planId;
   final Map<String, dynamic> workoutPayload, profile;
   final int ftp;
+  final TrainingMetrics metrics = TrainingMetrics();
   double elapsed = 0, activeSeconds = 0;
   int adjustment = 0, segment = 0;
   final List<Map<String, dynamic>> samples = [];
@@ -92,6 +95,7 @@ class SessionData {
       final samples = j['samples'] as List;
       if (samples.length > 86401) throw const FormatException();
       var sum = 0.0;
+      Object? previousSegment;
       for (final raw in samples) {
         final s = Map<String, dynamic>.from(raw as Map);
         for (final key in [
@@ -127,6 +131,17 @@ class SessionData {
         }
         data._sampleBytes += utf8.encode(jsonEncode(s)).length + 1;
         if (data._sampleBytes > maxSampleBytes) throw const FormatException();
+        final sampleSegment = s['segment'];
+        if (previousSegment != null && previousSegment != sampleSegment) {
+          data.metrics.breakPowerWindow();
+        }
+        previousSegment = sampleSegment;
+        data.metrics.add(
+          (s['duration_sec'] as num).toDouble(),
+          (s['watts'] as num).toInt(),
+          s['cadence'] as num?,
+          (s['heart_rate'] as num?)?.toInt(),
+        );
         data.samples.add(s);
       }
       if ((sum - data.activeSeconds).abs() > .001) {
@@ -171,39 +186,46 @@ class SessionData {
       );
     }
     _sampleBytes += bytes;
+    if (samples.isNotEmpty && samples.last['segment'] != segment) {
+      metrics.breakPowerWindow();
+    }
     activeSeconds += duration;
+    metrics.add(duration, watts, cadence, hr);
     samples.add(sample);
   }
 
-  Map<String, dynamic> finalize(String status, DateTime at) => {
-    'server': server,
-    'account_id': accountId,
-    'record': {
+  Map<String, dynamic> finalize(String status, DateTime at) {
+    final payload = <String, dynamic>{
       'id': id,
-      'kind': 'session',
-      'revision': 0,
-      'shared': false,
-      'deleted': false,
-      'payload': {
+      'user_id': profile['id'],
+      'user_name': profile['name'],
+      'workout_name': workoutPayload['name'],
+      'workout_file_name': workoutPayload['source_name'],
+      'workout_payload': workoutPayload,
+      'duration_sec': pythonRound(activeSeconds),
+      'workout_elapsed_sec': pythonRound(elapsed),
+      'ftp_watts': ftp,
+      'started_at': startedAt,
+      'timestamp': at.toUtc().toIso8601String(),
+      'status': status,
+      'trainer_source': 'bluetooth_ftms',
+      'plan_id': planId,
+      'perceived_exertion': null,
+      'metrics': metrics.summary(ftp),
+      'samples': samples,
+    };
+    payload['ftp_test_result'] = ftpTestResult(payload);
+    return {
+      'server': server,
+      'account_id': accountId,
+      'record': {
         'id': id,
-        'user_id': profile['id'],
-        'user_name': profile['name'],
-        'workout_name': workoutPayload['name'],
-        'workout_file_name': workoutPayload['source_name'],
-        'workout_payload': workoutPayload,
-        'duration_sec': pythonRound(activeSeconds),
-        'workout_elapsed_sec': pythonRound(elapsed),
-        'ftp_watts': ftp,
-        'started_at': startedAt,
-        'timestamp': at.toUtc().toIso8601String(),
-        'status': status,
-        'trainer_source': 'bluetooth_ftms',
-        'plan_id': planId,
-        'perceived_exertion': null,
-        'ftp_test_result': null,
-        'metrics': <String, dynamic>{},
-        'samples': samples,
+        'kind': 'session',
+        'revision': 0,
+        'shared': false,
+        'deleted': false,
+        'payload': payload,
       },
-    },
-  };
+    };
+  }
 }

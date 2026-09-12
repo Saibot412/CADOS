@@ -31,7 +31,7 @@ void main() {
     saved['revision'] = 1;
     saved['publisher'] = null;
     final payload = saved['payload'] as Map;
-    payload['metrics'] = {'max_heart_rate': 145};
+    payload['metrics'] = {...payload['metrics'] as Map, 'max_heart_rate': 145};
     payload['ftp_test_result'] = null;
     await journal.finalize(entry);
     sync = SessionSyncController(

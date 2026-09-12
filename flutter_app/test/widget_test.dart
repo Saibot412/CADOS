@@ -43,7 +43,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('247 W'), findsOneWidget);
       expect(find.text('91.5 rpm'), findsOneWidget);
-      expect(h.transport.sentPower, [50]);
+      h.clock.advance();
+      h.transport.measurementController.add(
+        const IndoorBikeMeasurement(powerWatts: 247, cadenceRpm: 91.5),
+      );
+      await tester.pump();
+      await h.session.tick();
+      await tester.pumpAndSettle();
+      expect(find.text('Trainingsmetriken'), findsOneWidget);
+      expect(find.text('Ø Leistung'), findsOneWidget);
+      expect(find.text('Normalized Power'), findsOneWidget);
+      expect(find.text('247 W'), findsNWidgets(4));
+      expect(find.text('0.2 kJ'), findsOneWidget);
+      expect(h.transport.sentPower, [50, 65]);
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     },

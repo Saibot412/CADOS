@@ -49,12 +49,16 @@ class WorkoutSessionController extends ChangeNotifier {
   bool _stopConfirmed = false, _completionPending = false;
   bool _shuttingDown = false;
   Map<String, dynamic>? _finalEntry;
+  Map<String, num>? completedMetrics;
+  Map<String, dynamic>? completedFtpTest;
   Duration? _lastTick, _lastTargetAt, _lastCheckpoint;
   int? _lastTarget;
   int _afterSequence = 0, _pauseGeneration = 0;
   Future<void> _tail = Future.value();
   bool get active => data != null && _finalEntry == null;
   bool get hasSession => data != null;
+  Map<String, num>? get metrics =>
+      data?.metrics.summary(data!.ftp) ?? completedMetrics;
   bool get canSelect => !hasSession && recovery == null && initialized && !busy;
   WorkoutState get state => engine?.state ?? WorkoutState.ready;
   int? get watts =>
@@ -151,6 +155,8 @@ class WorkoutSessionController extends ChangeNotifier {
     _stopConfirmed = false;
     _completionPending = false;
     _finalEntry = null;
+    completedMetrics = null;
+    completedFtpTest = null;
     engine!.start();
     engine!.pause();
     await _checkpoint(); // Must be durable before any trainer command.
@@ -285,7 +291,12 @@ class WorkoutSessionController extends ChangeNotifier {
       final wasRunning = state == WorkoutState.running;
       final previousTarget = _lastTarget;
       final block = engine!.blockIndex;
-      engine!.tick(dt, connected: trainer.connected, currentWatts: watts!);
+      engine!.tick(
+        dt,
+        connected: trainer.connected,
+        currentWatts: watts!,
+        currentCadence: cadence,
+      );
       final advanced = engine!.elapsed - before;
       if (wasRunning && advanced > 0 && previousTarget != null) {
         data!.sample(
@@ -351,6 +362,11 @@ class WorkoutSessionController extends ChangeNotifier {
     _capture();
     _finalEntry ??= copyJson(data!.finalize(status, clock.now()));
     await journal.finalize(_finalEntry!);
+    final payload = (_finalEntry!['record'] as Map)['payload'] as Map;
+    completedMetrics = Map<String, num>.from(payload['metrics'] as Map);
+    completedFtpTest = payload['ftp_test_result'] == null
+        ? null
+        : Map<String, dynamic>.from(payload['ftp_test_result'] as Map);
     engine!.stop();
     if (status == 'completed') engine!.state = WorkoutState.completed;
     data = null;
@@ -390,6 +406,7 @@ class WorkoutSessionController extends ChangeNotifier {
     );
     engine!.elapsed = data!.elapsed;
     engine!.adjustment = data!.adjustment;
+    engine!.restoreFtpCadenceSeen(data!.samples);
     engine!.state = WorkoutState.paused;
     data!.segment++;
     _lastTick = clock.monotonic;

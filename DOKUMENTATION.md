@@ -104,8 +104,10 @@ fehlende Sensorwerte bleiben leer. Fehlgeschlagene Uploads bleiben über Neustar
 erhalten und werden nach Anmeldung/Refresh oder manuell wiederholt. Erst passende
 autoritative Bestätigung entfernt die Einheit. Anschließend wird der Katalog samt
 serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellung
-und weitere Details stehen im Flutter-README. Adaptive ERG, lokale vollständige
-Metrik-/FTP-Test-Parität sowie Editorfunktionen sind weiterhin offen.
+und weitere Details stehen im Flutter-README. Lokale zeitgewichtete Trainingsmetriken,
+Normalized Power/IF/TSS und die gemessene FTP-Rampentest-Auswertung sind integriert
+und werden aus dem Journal wiederhergestellt. Adaptive ERG, Blocknavigation,
+Profil-/Zonenbearbeitung und Editorfunktionen sind weiterhin offen.
 
 Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
 Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.

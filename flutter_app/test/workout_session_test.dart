@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cados_app/features/workout/workout_engine.dart';
 import 'package:cados_app/features/catalog/records.dart';
+import 'package:cados_app/features/session/workout_session_controller.dart';
 import 'package:cados_app/features/trainer/ftms_transport.dart';
 import 'package:cados_app/features/trainer/ftms_protocol.dart';
 
 import 'session_helpers.dart';
+import 'account_test.dart' show record;
 
 import 'package:cados_app/core/device.dart';
 import 'package:cados_app/features/heart_rate/heart_rate.dart';
@@ -253,4 +255,62 @@ void main() {
       );
     },
   );
+  test('FTP ramp cadence finish finalizes measured local assessment', () async {
+    const workoutId = '165adcb9-77e1-46c3-809b-2c4d2ea50446';
+    final payload = {
+      'name': 'FTP Ramp Test (ERG)',
+      'source_name': 'ftp-ramp.json',
+      'blocks': [
+        {
+          'type': 'steady',
+          'label': 'Warmup',
+          'duration_sec': 1,
+          'target_watts': 500,
+        },
+        {
+          'type': 'steady',
+          'label': 'Step 1',
+          'duration_sec': 120,
+          'target_watts': 100,
+        },
+      ],
+    };
+    await h.prepare();
+    h.account.catalog = Catalog.fromJson({
+      'records': [
+        record(workoutId, 'workout', payload),
+        record('395599cb-cc7b-409d-bfef-50d70e8adf8b', 'profile', {
+          'id': '395599cb-cc7b-409d-bfef-50d70e8adf8b',
+          'name': 'Test rider',
+          'ftp': 250,
+        }),
+      ],
+    });
+    h.session.select(h.account.catalog!.workouts.single);
+    await h.session.start();
+    await h.step(watts: 180); // Start pedaling; no ridden time yet.
+    await h.step(watts: 180); // Warm-up target/power must not affect FTP.
+    for (var i = 0; i < 60; i++) {
+      await h.step(watts: 300, cadence: 90);
+    }
+    await h.step(watts: 300, cadence: null);
+    expect(h.session.state, WorkoutState.running);
+    await h.step(watts: 300, cadence: 0);
+
+    expect(h.session.state, WorkoutState.completed);
+    expect(h.transport.stops, 1);
+    expect(h.journal.finishes, 1);
+    expect(h.session.completedFtpTest, {
+      'old_ftp': 250,
+      'method': '75_percent_best_continuous_minute',
+      'eligible': true,
+      'best_minute_watts': 300,
+      'estimated_ftp': 225,
+    });
+    final result = (h.journal.outbox.single['record'] as Map)['payload'] as Map;
+    expect(result['workout_elapsed_sec'], 62);
+    expect(result['ftp_test_result'], h.session.completedFtpTest);
+    expect(result['metrics']['best_minute_watts'], 300);
+    expect(result['metrics']['max_watts'], 300);
+  });
 }

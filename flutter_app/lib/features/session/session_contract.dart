@@ -2,8 +2,9 @@ import 'dart:convert';
 
 import '../workout/workout_parser.dart';
 
-/// Validate our outgoing WorkoutSessionRecord before persistence/upload. Server
-/// derived metrics and FTP-test results remain the server's responsibility.
+/// Validate our outgoing WorkoutSessionRecord before persistence/upload. Local
+/// metrics and FTP-test results come from measured samples; the server verifies
+/// and may augment them before acknowledging the record.
 void validateSessionEntry(Map<String, dynamic> entry) {
   try {
     final r = entry['record'] as Map<String, dynamic>;

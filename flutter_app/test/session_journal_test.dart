@@ -51,7 +51,15 @@ void main() {
     final loaded = await FileSessionJournal(file).load();
     expect(loaded.draft!['elapsed_sec'], 2);
     expect(loaded.draft!['plan_id'], 'ae2b4ea1-7d26-458e-b2c6-a8c7844ebf3d');
+    final restored = SessionData.restore(loaded.draft!);
+    expect(restored.metrics.summary(250)['avg_watts'], 170);
+    expect(restored.metrics.summary(250)['avg_cadence'], 0);
     final entry = data.finalize('stopped', DateTime.utc(2026, 9, 11));
+    final payload = (entry['record'] as Map)['payload'] as Map;
+    expect(payload['metrics']['avg_watts'], 170);
+    expect(payload['metrics']['max_watts'], 170);
+    expect(payload['metrics']['work_kj'], .3);
+    expect(payload['ftp_test_result'], isNull);
     await journal.finalize(entry);
     await journal.finalize(entry);
     final finalState = await FileSessionJournal(file).load();
