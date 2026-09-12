@@ -38,7 +38,7 @@ percent targets plus a locally derived power preview. Unknown metadata and block
 including dormant absolute targets behind FTP-percent targets, survive edits. Shared
 workouts are read-only and can only become new private copies. Dirty editors require an
 explicit discard decision. JSON and ZWO files up to 2 MB use the native file picker and
-are sent as raw text to authenticated `/api/v1/import`; successful import opens only the
+are sent as unchanged raw bytes to authenticated `/api/v1/import`; successful import opens only the
 authoritative refreshed workout. Deletes require confirmation, upload a tombstone with
 the current revision and do not alter historical sessions. Calendar editing remains
 deferred.

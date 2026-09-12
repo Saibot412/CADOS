@@ -22,6 +22,21 @@ class HttpApiTransport implements ApiTransport {
     final response = await http.Response.fromStream(await client.send(request));
     return HttpReply(response.statusCode, response.body);
   }
+
+  @override
+  Future<HttpReply> sendBytes(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    List<int> body,
+  ) async {
+    final request = http.Request(method, uri)
+      ..headers.addAll(headers)
+      ..followRedirects = false
+      ..bodyBytes = List<int>.from(body);
+    final response = await http.Response.fromStream(await client.send(request));
+    return HttpReply(response.statusCode, response.body);
+  }
 }
 
 class SecureTokenStore implements TokenStore {

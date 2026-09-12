@@ -161,6 +161,47 @@ void main() {
       (secondChange['payload'] as Map<String, dynamic>)['future_metadata'],
       {'kept': true},
     );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('workoutName')),
+      -300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(
+      find.byKey(const Key('workoutName')),
+      'Noch nicht gespeichert',
+    );
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Änderungen verwerfen?'), findsOneWidget);
+  });
+
+  testWidgets('switching target mode displays the value that will be saved', (
+    tester,
+  ) async {
+    final (account, _) = await signedIn();
+    await tester.pumpWidget(editorHarness(account, existing: workout()));
+
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('steadyTarget-0-true')))
+          .initialValue,
+      '90',
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('steadyMode-0')),
+        matching: find.text('Watt'),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('steadyTarget-0-false')))
+          .initialValue,
+      '222',
+    );
   });
 
   testWidgets('private edit keeps metadata and uses current revision', (

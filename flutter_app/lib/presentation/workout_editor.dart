@@ -85,7 +85,7 @@ class _WorkoutEditorPageState extends State<WorkoutEditorPage> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !dirty || mutation.saved,
+    canPop: !dirty,
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop) _confirmDiscard();
     },
@@ -352,7 +352,7 @@ class _WorkoutEditorPageState extends State<WorkoutEditorPage> {
         ),
       ),
       _field(
-        key: Key('steadyTarget-${blockIds[index]}'),
+        key: Key('steadyTarget-${blockIds[index]}-${block.usesFtpTarget}'),
         width: 170,
         initial: block.usesFtpTarget
             ? _number(block.targetPctFtp! * 100)
@@ -389,7 +389,7 @@ class _WorkoutEditorPageState extends State<WorkoutEditorPage> {
         ),
       ),
       _field(
-        key: Key('rampStart-${blockIds[index]}'),
+        key: Key('rampStart-${blockIds[index]}-${block.usesFtpStart}'),
         width: 160,
         initial: block.usesFtpStart
             ? _number(block.startPctFtp! * 100)
@@ -418,7 +418,7 @@ class _WorkoutEditorPageState extends State<WorkoutEditorPage> {
         ),
       ),
       _field(
-        key: Key('rampEnd-${blockIds[index]}'),
+        key: Key('rampEnd-${blockIds[index]}-${block.usesFtpEnd}'),
         width: 160,
         initial: block.usesFtpEnd
             ? _number(block.endPctFtp! * 100)

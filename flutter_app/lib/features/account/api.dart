@@ -47,6 +47,13 @@ abstract interface class ApiTransport {
     Map<String, String> headers,
     String? body,
   );
+
+  Future<HttpReply> sendBytes(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    List<int> body,
+  );
 }
 
 class ApiFailure implements Exception {
@@ -61,21 +68,26 @@ class CadosApi {
   CadosApi(this.transport, this.config);
   final ApiTransport transport;
   final ApiConfig config;
-  Future<Map<String, dynamic>> uploadText(
+  Future<Map<String, dynamic>> uploadBytes(
     String path, {
     required String token,
-    required String content,
+    required List<int> content,
     required String contentType,
     required Map<String, String> query,
   }) async {
     HttpReply reply;
     try {
       reply = await transport
-          .send('POST', config.endpoint(path).replace(queryParameters: query), {
-            'Content-Type': contentType,
-            'X-Cados-Request': '1',
-            'Authorization': 'Bearer $token',
-          }, content)
+          .sendBytes(
+            'POST',
+            config.endpoint(path).replace(queryParameters: query),
+            {
+              'Content-Type': contentType,
+              'X-Cados-Request': '1',
+              'Authorization': 'Bearer $token',
+            },
+            content,
+          )
           .timeout(const Duration(seconds: 20));
     } catch (_) {
       throw const ApiFailure(

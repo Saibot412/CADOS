@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 
 import '../account/account_controller.dart';
@@ -9,7 +7,7 @@ import '../catalog/records.dart';
 class WorkoutImportSource {
   const WorkoutImportSource(this.filename, this.content);
   final String filename;
-  final String content;
+  final List<int> content;
 }
 
 class WorkoutImportController extends ChangeNotifier {
@@ -23,7 +21,7 @@ class WorkoutImportController extends ChangeNotifier {
   WorkoutRecord? imported;
   bool _disposed = false;
 
-  Future<bool> import(String filename, String content) async {
+  Future<bool> import(String filename, List<int> content) async {
     if (busy) return false;
     imported = null;
     error = null;
@@ -38,7 +36,7 @@ class WorkoutImportController extends ChangeNotifier {
       _changed();
       return false;
     }
-    final byteLength = utf8.encode(content).length;
+    final byteLength = content.length;
     if (byteLength == 0 || byteLength > 2000000) {
       error = 'Die Importdatei muss zwischen 1 Byte und 2 MB groß sein.';
       _changed();
@@ -51,9 +49,7 @@ class WorkoutImportController extends ChangeNotifier {
       imported = await account.importWorkout(
         filename: safeName,
         content: content,
-        contentType: suffix == '.json'
-            ? 'application/json; charset=utf-8'
-            : 'application/xml; charset=utf-8',
+        contentType: suffix == '.json' ? 'application/json' : 'application/xml',
         expectedGeneration: sourceGeneration,
       );
       sourceGeneration = account.syncGeneration;

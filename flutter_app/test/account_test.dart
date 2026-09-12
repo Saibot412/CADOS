@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cados_app/features/account/api.dart';
 import 'package:cados_app/features/account/account_controller.dart';
 import 'package:cados_app/features/catalog/records.dart';
+import 'package:cados_app/infrastructure/account/production_stores.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 class TestStore implements TokenStore, ConfigStore {
   final tokens = <String, String>{};
@@ -31,7 +34,15 @@ class TestStore implements TokenStore, ConfigStore {
 class TestHttp implements ApiTransport {
   final replies = <HttpReply>[];
   final requests =
-      <({String method, Uri uri, Map<String, String> headers, String? body})>[];
+      <
+        ({
+          String method,
+          Uri uri,
+          Map<String, String> headers,
+          String? body,
+          List<int>? bytes,
+        })
+      >[];
   @override
   Future<HttpReply> send(
     String method,
@@ -39,7 +50,30 @@ class TestHttp implements ApiTransport {
     Map<String, String> headers,
     String? body,
   ) async {
-    requests.add((method: method, uri: uri, headers: headers, body: body));
+    requests.add((
+      method: method,
+      uri: uri,
+      headers: headers,
+      body: body,
+      bytes: null,
+    ));
+    return replies.removeAt(0);
+  }
+
+  @override
+  Future<HttpReply> sendBytes(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    List<int> body,
+  ) async {
+    requests.add((
+      method: method,
+      uri: uri,
+      headers: headers,
+      body: null,
+      bytes: List<int>.from(body),
+    ));
     return replies.removeAt(0);
   }
 
@@ -70,6 +104,25 @@ Map<String, dynamic> record(
   'extension': 'retained',
 };
 void main() {
+  test('HTTP transport sends import bytes without text transcoding', () async {
+    final bytes = <int>[0xef, 0xbb, 0xbf, 0xff, 0x00, 0x3c];
+    final transport = HttpApiTransport(
+      MockClient((request) async {
+        expect(request.bodyBytes, bytes);
+        expect(request.headers['Content-Type'], 'application/octet-stream');
+        return http.Response('{}', 200);
+      }),
+    );
+
+    final reply = await transport.sendBytes(
+      'POST',
+      Uri.parse('https://example.invalid/api/v1/import'),
+      {'Content-Type': 'application/octet-stream'},
+      bytes,
+    );
+    expect(reply.status, 200);
+  });
+
   test('snapshot envelopes are recursively immutable and malformed shapes are rejected', () {
     final raw = record('w', 'workout', {
       'name': 'Server workout',

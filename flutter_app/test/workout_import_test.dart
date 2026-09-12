@@ -28,7 +28,9 @@ void main() {
     http.json({
       'records': [profile(), imported],
     });
-    const source = '<workout_file><name>Imported Workout</name></workout_file>';
+    final source = utf8.encode(
+      '<workout_file><name>Imported Workout</name></workout_file>',
+    );
 
     expect(await controller.import('folder/ride.zwo', source), isTrue);
 
@@ -39,8 +41,9 @@ void main() {
     expect(request.uri.path, '/api/v1/import');
     expect(request.uri.queryParameters, {'filename': 'ride.zwo'});
     expect(request.headers['Authorization'], 'Bearer test-only-token');
-    expect(request.headers['Content-Type'], 'application/xml; charset=utf-8');
-    expect(request.body, source);
+    expect(request.headers['Content-Type'], 'application/xml');
+    expect(request.body, isNull);
+    expect(request.bytes, source);
     expect(http.requests[3].uri.path, '/api/v1/sync');
   });
 
@@ -54,21 +57,24 @@ void main() {
     http.json({
       'records': [profile(), imported],
     });
-    const source = '{"name":"Imported Workout","blocks":[]}';
+    final source = <int>[
+      0xef,
+      0xbb,
+      0xbf,
+      ...utf8.encode('{"name":"Imported Workout","blocks":[]}'),
+    ];
 
     expect(await controller.import('ride.JSON', source), isTrue);
-    expect(
-      http.requests[2].headers['Content-Type'],
-      'application/json; charset=utf-8',
-    );
-    expect(http.requests[2].body, source);
+    expect(http.requests[2].headers['Content-Type'], 'application/json');
+    expect(http.requests[2].body, isNull);
+    expect(http.requests[2].bytes, source);
   });
 
   test('extension, empty file and 2 MB limit are enforced locally', () async {
     final invalid = [
-      (name: 'ride.txt', content: 'data'),
-      (name: 'ride.zwo', content: ''),
-      (name: 'ride.json', content: List.filled(2000001, 'x').join()),
+      (name: 'ride.txt', content: utf8.encode('data')),
+      (name: 'ride.zwo', content: <int>[]),
+      (name: 'ride.json', content: List.filled(2000001, 120)),
     ];
     for (final item in invalid) {
       final (account, http) = await signedIn();
@@ -86,7 +92,10 @@ void main() {
       final controller = WorkoutImportController(account);
       http.json({'detail': 'Invalid import'}, status);
 
-      expect(await controller.import('ride.zwo', '<invalid/>'), isFalse);
+      expect(
+        await controller.import('ride.zwo', utf8.encode('<invalid/>')),
+        isFalse,
+      );
       expect(controller.imported, isNull);
       expect(controller.error, isNotNull);
       if (status == 401) expect(account.user, isNull);
@@ -96,14 +105,17 @@ void main() {
   test('network and malformed acknowledgement never report import', () async {
     final (offlineAccount, _) = await signedIn();
     final offline = WorkoutImportController(offlineAccount);
-    expect(await offline.import('ride.json', '{}'), isFalse);
+    expect(await offline.import('ride.json', utf8.encode('{}')), isFalse);
     expect(offline.error, contains('Server nicht erreichbar'));
 
     final (account, http) = await signedIn();
     final malformed = WorkoutImportController(account);
     http.json({'records': []});
     expect(
-      await malformed.import('ride.json', jsonEncode({'name': 'x'})),
+      await malformed.import(
+        'ride.json',
+        utf8.encode(jsonEncode({'name': 'x'})),
+      ),
       isFalse,
     );
     expect(malformed.imported, isNull);
@@ -130,8 +142,10 @@ void main() {
               account: account,
               workouts: true,
               onSelect: (_, _) {},
-              pickWorkoutImport: () async =>
-                  const WorkoutImportSource('ride.zwo', '<workout_file/>'),
+              pickWorkoutImport: () async => WorkoutImportSource(
+                'ride.zwo',
+                utf8.encode('<workout_file/>'),
+              ),
             ),
           ),
         ),

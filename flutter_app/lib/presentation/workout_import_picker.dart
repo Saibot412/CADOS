@@ -16,5 +16,5 @@ Future<WorkoutImportSource?> pickWorkoutImportSource() async {
       'Die Importdatei muss zwischen 1 Byte und 2 MB groß sein.',
     );
   }
-  return WorkoutImportSource(file.name, await file.readAsString());
+  return WorkoutImportSource(file.name, await file.readAsBytes());
 }

@@ -187,7 +187,7 @@ class AccountController extends ChangeNotifier {
 
   Future<WorkoutRecord> importWorkout({
     required String filename,
-    required String content,
+    required List<int> content,
     required String contentType,
     required int expectedGeneration,
   }) async {
@@ -205,7 +205,7 @@ class AccountController extends ChangeNotifier {
         );
       }
       final reply = Catalog.fromJson(
-        await _api.uploadText(
+        await _api.uploadBytes(
           '/import',
           token: _token!,
           content: content,
