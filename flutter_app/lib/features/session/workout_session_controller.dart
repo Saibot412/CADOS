@@ -10,6 +10,7 @@ import '../workout/workout_engine.dart';
 import '../workout/workout_parser.dart';
 import 'session_payload.dart';
 import 'session_ports.dart';
+import 'training_preferences.dart';
 
 part 'workout_selection.dart';
 
@@ -24,6 +25,7 @@ class WorkoutSessionController extends ChangeNotifier {
     required this.clock,
     required this.ticker,
     this.onFinalized,
+    this.trainingPreferences,
     String Function()? newId,
   }) : newId = newId ?? sessionUuid {
     trainer.addListener(_deviceChanged);
@@ -38,12 +40,14 @@ class WorkoutSessionController extends ChangeNotifier {
   final SessionTicker ticker;
   final String Function() newId;
   final Future<void> Function()? onFinalized;
+  final TrainingPreferences? trainingPreferences;
   WorkoutRecord? selected;
   String? planId, error;
   WorkoutEngine? engine;
   SessionData? data, recovery;
   bool initialized = false,
       busy = false,
+      adaptiveErgPreferred = false,
       _closed = false,
       _safetyQueued = false;
   bool _stopConfirmed = false, _completionPending = false;
@@ -74,6 +78,26 @@ class WorkoutSessionController extends ChangeNotifier {
       clock.now().difference(at).inMilliseconds >= 0 &&
       clock.now().difference(at) <= const Duration(seconds: 3);
   int? get target => state == WorkoutState.running ? _lastTarget : null;
+  int? get prescribedTarget => state == WorkoutState.running && engine != null
+      ? _clamp(engine!.targetWatts)
+      : null;
+  int? get effectiveTrainerTarget => engine == null ? null : _lastTarget;
+  int get adaptiveReliefWatts {
+    final current = engine;
+    if (current == null) return 0;
+    final difference =
+        _clamp(current.targetWatts) - _clamp(current.trainerTargetWatts);
+    return difference > 0 ? difference : 0;
+  }
+
+  bool get adaptiveErgActive => engine?.adaptiveErgEnabled ?? false;
+  bool get adaptiveErgAllowed {
+    final current = engine;
+    if (current != null) return !current.isFtpTest;
+    final name = selected?.name.toLowerCase() ?? '';
+    return !(name.contains('ftp') && name.contains('ramp'));
+  }
+
   int _clamp(int watts) =>
       (trainer.powerRange?.clampAndRound(watts) ?? watts).clamp(0, 32767);
   void _changed() {
@@ -108,6 +132,13 @@ class WorkoutSessionController extends ChangeNotifier {
   Future<void> initialize() => _run(() async {
     final stored = await journal.load();
     if (stored.draft != null) recovery = SessionData.restore(stored.draft!);
+    try {
+      adaptiveErgPreferred =
+          await trainingPreferences?.readAdaptiveErg() ?? false;
+    } catch (_) {
+      adaptiveErgPreferred = false;
+      error = 'Adaptive-ERG-Einstellung konnte nicht geladen werden.';
+    }
     initialized = true;
     ticker.start(() {
       if (!busy) unawaited(tick());
@@ -141,6 +172,7 @@ class WorkoutSessionController extends ChangeNotifier {
       ftp: profile.ftp!,
     );
     engine = WorkoutEngine(parsed);
+    engine!.setAdaptiveErg(adaptiveErgPreferred);
     data = SessionData(
       id: newId(),
       server: account.config.base.toString(),
@@ -322,7 +354,7 @@ class WorkoutSessionController extends ChangeNotifier {
         return;
       }
       if (state == WorkoutState.running) {
-        final target = _clamp(engine!.targetWatts);
+        final target = _clamp(engine!.trainerTargetWatts);
         if (target != _lastTarget &&
             (_lastTargetAt == null ||
                 now - _lastTargetAt! >= const Duration(seconds: 1))) {
@@ -335,6 +367,12 @@ class WorkoutSessionController extends ChangeNotifier {
             return;
           }
           _lastTarget = target;
+          if (engine!.adaptiveErgEnabled && adaptiveReliefWatts > 0) {
+            trainer.logger?.log(
+              'Adaptive ERG target: prescribed=${_clamp(engine!.targetWatts)}W '
+              'effective=${target}W relief=${adaptiveReliefWatts}W',
+            );
+          }
         }
       }
     }
@@ -382,6 +420,32 @@ class WorkoutSessionController extends ChangeNotifier {
     }
   }
 
+  Future<void> setAdaptiveErg(bool enabled) => _run(() async {
+    await trainingPreferences?.saveAdaptiveErg(enabled);
+    adaptiveErgPreferred = enabled;
+    engine?.setAdaptiveErg(enabled);
+    trainer.logger?.log(
+      'Adaptive ERG preference: ${enabled ? 'enabled' : 'disabled'}; '
+      'active=$adaptiveErgActive ftp_test=${engine?.isFtpTest ?? false}',
+    );
+    if (state == WorkoutState.running && engine != null) {
+      final effective = _clamp(engine!.trainerTargetWatts);
+      if (effective != _lastTarget) {
+        if (!await trainer.setPower(effective)) {
+          _latch();
+          error =
+              trainer.error ?? 'Adaptive ERG konnte nicht bestätigt werden.';
+          await _pauseHardware();
+          await _checkpoint();
+          return;
+        }
+        _lastTarget = effective;
+        _lastTargetAt = clock.monotonic;
+      }
+    }
+    if (active) await _checkpoint();
+  });
+
   void _capture() {
     if (data != null && engine != null) {
       data!.elapsed = engine!.elapsed;
@@ -404,6 +468,7 @@ class WorkoutSessionController extends ChangeNotifier {
     engine = WorkoutEngine(
       WorkoutParser.parse(data!.workoutPayload, ftp: data!.ftp),
     );
+    engine!.setAdaptiveErg(adaptiveErgPreferred);
     engine!.elapsed = data!.elapsed;
     engine!.adjustment = data!.adjustment;
     engine!.restoreFtpCadenceSeen(data!.samples);

@@ -18,6 +18,7 @@ import 'infrastructure/ble/universal_ble_trainer_transport.dart';
 import 'infrastructure/logging/file_diagnostic_logger.dart';
 import 'infrastructure/logging/log_export.dart';
 import 'infrastructure/preferences/file_device_preferences.dart';
+import 'infrastructure/preferences/file_training_preferences.dart';
 import 'presentation/cados_app.dart';
 import 'features/session/workout_session_controller.dart';
 import 'features/session/session_sync_controller.dart';
@@ -57,6 +58,9 @@ Future<void> main() async {
   final journal = FileSessionJournal(
     File('${directory.path}/training/journal.json'),
   );
+  final trainingPreferences = FileTrainingPreferences(
+    File('${directory.path}/training/preferences.json'),
+  );
   final sync = SessionSyncController(
     account: account,
     journal: journal,
@@ -70,6 +74,7 @@ Future<void> main() async {
     clock: clock,
     ticker: PeriodicSessionTicker(),
     onFinalized: sync.retry,
+    trainingPreferences: trainingPreferences,
   );
   await session.initialize();
   unawaited(sync.retry());

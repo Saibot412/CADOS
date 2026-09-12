@@ -49,6 +49,11 @@ one valid legacy record cannot invalidate the snapshot. Missing workouts and pas
 plans cannot start; completed sessions are matched by their real `plan_id`. Offline,
 authentication and conflict failures remain visible without optimistic calendar state.
 Absent network/data/devices show explicit unavailable/empty/disconnected states.
+Adaptive ERG relief is an explicit, locally persisted opt-in; normal ERG remains the
+default. Sustained cadence deficit can reduce the effective trainer target gradually
+by at most 10%, while prescribed and confirmed effective watts remain separately
+visible. Missing cadence never triggers relief, safety transitions reset controller
+state, and FTP ramp tests forcibly disable it.
 
 ## Architecture
 
@@ -67,7 +72,8 @@ Absent network/data/devices show explicit unavailable/empty/disconnected states.
 - `lib/infrastructure/ble`: universal_ble adapters and shared scan ownership.
   Only one scan runs at once; trainer and HR can remain connected together.
   Stream routing uses per-device subscriptions, not global callback replacement.
-- `lib/infrastructure/preferences`: two small atomic JSON files using `dart:io`.
+- `lib/infrastructure/preferences`: small atomic JSON files using `dart:io` for
+  device choices and the adaptive-ERG preference.
   `path_provider` supplies the app-support directory; no extra preferences plugin.
 - `lib/infrastructure/logging`: serialized, flushed file appends and desktop save
   through Flutter's `file_selector`. The diagnostic port is widget-independent.
@@ -106,6 +112,11 @@ location on Linux, Windows and macOS. The macOS sandbox permits user-selected wr
 Android/iOS keep the durable file and clipboard; a mobile share action is deferred.
 Web is not supported by this `dart:io` application composition. Disk write failures
 are surfaced by export.
+
+Adaptive-ERG diagnostics log only preference transitions and prescribed/effective/
+relief watt values. Automated tests cover the deterministic controller and confirmed
+FTMS command path. Physical resistance behavior remains explicitly unvalidated while
+the rider is injured; no platform build or load test was performed for this step.
 
 ## Exact workout parity slice
 

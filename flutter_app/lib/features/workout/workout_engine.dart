@@ -15,11 +15,19 @@ enum WorkoutState {
 /// this engine never sends trainer commands or starts a timer.
 class WorkoutEngine {
   WorkoutEngine(this.workout);
+  static const _adaptiveErgDeadbandRpm = 3;
+  static const _adaptiveErgTriggerSeconds = 2.0;
+  static const _adaptiveErgMaximumReliefRatio = 0.10;
+  static const _adaptiveErgReliefWattsPerSecond = 5.0;
+  static const _adaptiveErgRecoveryWattsPerSecond = 4.0;
+
   final Workout workout;
   WorkoutState state = WorkoutState.ready;
   double elapsed = 0, _zero = 0, _ramp = 0, _transition = 0;
+  double _adaptiveLowCadenceSeconds = 0, _adaptiveReliefWatts = 0;
   int adjustment = 0, _lastIndex = -1, _lastTarget = 0;
   int? _transitionFrom;
+  bool _adaptiveErgEnabled = false;
   bool ramping = false, autoPaused = false, _ftpCadenceSeen = false;
   bool get isFtpTest {
     final name = workout.name.toLowerCase();
@@ -28,6 +36,13 @@ class WorkoutEngine {
 
   int get blockIndex => workout.locate(elapsed).$1;
   int? get targetCadence => workout.locate(elapsed).$2.cadence;
+  bool get adaptiveErgEnabled => _adaptiveErgEnabled;
+  int get adaptiveReliefWatts => pythonRound(_adaptiveReliefWatts);
+  int get trainerTargetWatts =>
+      (targetWatts - (_adaptiveErgEnabled ? adaptiveReliefWatts : 0)).clamp(
+        0,
+        32767,
+      );
   int get targetWatts {
     final (_, block, seconds) = workout.locate(elapsed);
     var target = (block.targetAt(seconds) + adjustment).clamp(0, 32767);
@@ -41,6 +56,11 @@ class WorkoutEngine {
       target = pythonRound(30 + (target - 30) * (_ramp / 5).clamp(0, 1));
     }
     return target;
+  }
+
+  void setAdaptiveErg(bool enabled) {
+    _adaptiveErgEnabled = enabled && !isFtpTest;
+    _resetAdaptiveErg();
   }
 
   void start() {
@@ -61,6 +81,7 @@ class WorkoutEngine {
     ramping = false;
     autoPaused = false;
     _ftpCadenceSeen = false;
+    _resetAdaptiveErg();
     state = WorkoutState.waitingForPedal;
   }
 
@@ -70,6 +91,7 @@ class WorkoutEngine {
       state = WorkoutState.paused;
       autoPaused = false;
       ramping = false;
+      _resetAdaptiveErg();
     }
   }
 
@@ -78,6 +100,7 @@ class WorkoutEngine {
       state = WorkoutState.waitingForPedal;
       autoPaused = false;
       _zero = 0;
+      _resetAdaptiveErg();
     }
   }
 
@@ -86,6 +109,7 @@ class WorkoutEngine {
     ramping = false;
     autoPaused = false;
     _transitionFrom = null;
+    _resetAdaptiveErg();
   }
 
   void adjustTarget(int delta) {
@@ -111,6 +135,7 @@ class WorkoutEngine {
       autoPaused = dt <= 5;
       ramping = false;
       _transitionFrom = null;
+      _resetAdaptiveErg();
       return;
     }
     if (state == WorkoutState.waitingForPedal ||
@@ -147,13 +172,16 @@ class WorkoutEngine {
     }
     elapsed += dt;
     _update(dt);
+    _updateAdaptiveErg(currentCadence, dt);
     if (elapsed >= workout.duration) {
       state = WorkoutState.completed;
+      _resetAdaptiveErg();
     } else if (_zero >= 2) {
       state = WorkoutState.paused;
       autoPaused = true;
       ramping = false;
       _transitionFrom = null;
+      _resetAdaptiveErg();
     }
   }
 
@@ -190,8 +218,55 @@ class WorkoutEngine {
         blockIndex != _lastIndex) {
       _transitionFrom = _lastTarget;
       _transition = 0;
+      _resetAdaptiveErg();
     }
     _lastIndex = blockIndex;
     _lastTarget = targetWatts;
+  }
+
+  void _updateAdaptiveErg(double? cadence, double dt) {
+    if (!_adaptiveErgEnabled || state != WorkoutState.running) {
+      _resetAdaptiveErg();
+      return;
+    }
+    final cadenceTarget = targetCadence;
+    final wattsTarget = targetWatts;
+    if (cadenceTarget == null ||
+        cadenceTarget == 0 ||
+        cadence == null ||
+        cadence <= 0 ||
+        wattsTarget <= 0) {
+      _adaptiveLowCadenceSeconds = 0;
+      _adaptiveReliefWatts = math.max(
+        0,
+        _adaptiveReliefWatts - _adaptiveErgRecoveryWattsPerSecond * dt,
+      );
+      return;
+    }
+
+    final deficit = cadenceTarget - cadence - _adaptiveErgDeadbandRpm;
+    if (deficit > 0) {
+      _adaptiveLowCadenceSeconds += dt;
+      final maximum = wattsTarget * _adaptiveErgMaximumReliefRatio;
+      final desired = maximum * math.min(1, deficit / 12);
+      if (_adaptiveLowCadenceSeconds >= _adaptiveErgTriggerSeconds) {
+        _adaptiveReliefWatts = math.min(
+          desired,
+          _adaptiveReliefWatts + _adaptiveErgReliefWattsPerSecond * dt,
+        );
+      }
+      return;
+    }
+
+    _adaptiveLowCadenceSeconds = 0;
+    _adaptiveReliefWatts = math.max(
+      0,
+      _adaptiveReliefWatts - _adaptiveErgRecoveryWattsPerSecond * dt,
+    );
+  }
+
+  void _resetAdaptiveErg() {
+    _adaptiveLowCadenceSeconds = 0;
+    _adaptiveReliefWatts = 0;
   }
 }

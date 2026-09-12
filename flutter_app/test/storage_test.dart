@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cados_app/core/device.dart';
 import 'package:cados_app/infrastructure/logging/file_diagnostic_logger.dart';
 import 'package:cados_app/infrastructure/preferences/file_device_preferences.dart';
+import 'package:cados_app/infrastructure/preferences/file_training_preferences.dart';
 
 void main() {
   late Directory dir;
@@ -58,4 +59,18 @@ void main() {
     await File('${dir.path}/trainer.json').writeAsString('{');
     expect(await reloaded.read('trainer'), isNull);
   });
+  test(
+    'adaptive ERG preference persists safely and corrupt data defaults off',
+    () async {
+      final file = File('${dir.path}/training/preferences.json');
+      final store = FileTrainingPreferences(file);
+      expect(await store.readAdaptiveErg(), isFalse);
+      await store.saveAdaptiveErg(true);
+      expect(await FileTrainingPreferences(file).readAdaptiveErg(), isTrue);
+      await store.saveAdaptiveErg(false);
+      expect(await FileTrainingPreferences(file).readAdaptiveErg(), isFalse);
+      await file.writeAsString('{');
+      expect(await store.readAdaptiveErg(), isFalse);
+    },
+  );
 }

@@ -6,6 +6,7 @@ import 'package:cados_app/features/session/session_payload.dart';
 import 'package:cados_app/features/session/session_ports.dart';
 import 'package:cados_app/features/session/workout_session_controller.dart';
 import 'package:cados_app/features/session/session_sync_controller.dart';
+import 'package:cados_app/features/session/training_preferences.dart';
 import 'package:cados_app/features/trainer/trainer_controller.dart';
 import 'package:cados_app/features/trainer/ftms_protocol.dart';
 import 'package:cados_app/features/trainer/ftms_transport.dart';
@@ -123,6 +124,24 @@ class TestUploader implements SessionUploader {
   }
 }
 
+class MemoryTrainingPreferences implements TrainingPreferences {
+  MemoryTrainingPreferences([this.enabled = false]);
+
+  bool enabled;
+  bool fail = false;
+  final List<bool> writes = [];
+
+  @override
+  Future<bool> readAdaptiveErg() async => enabled;
+
+  @override
+  Future<void> saveAdaptiveErg(bool value) async {
+    if (fail) throw StateError('preferences');
+    enabled = value;
+    writes.add(value);
+  }
+}
+
 class SessionTrainer extends FakeTrainerTransport {
   int starts = 0, pauses = 0, stops = 0;
   bool failStart = false,
@@ -160,9 +179,10 @@ class SessionTrainer extends FakeTrainerTransport {
 }
 
 class SessionHarness {
-  SessionHarness() {
+  SessionHarness({MemoryTrainingPreferences? trainingPreferences})
+    : trainingPreferences = trainingPreferences ?? MemoryTrainingPreferences() {
     account = AccountController(http, store, store);
-    trainer = TrainerController(transport, now: clock.now);
+    trainer = TrainerController(transport, logger: logger, now: clock.now);
     hr = HeartRateController(
       hrTransport,
       MemoryLog(),
@@ -177,6 +197,7 @@ class SessionHarness {
       clock: clock,
       ticker: ticker,
       newId: () => sessionId,
+      trainingPreferences: this.trainingPreferences,
     );
     sync = SessionSyncController(
       account: account,
@@ -185,6 +206,8 @@ class SessionHarness {
     );
   }
   final hrTransport = FakeHr();
+  final logger = MemoryLog();
+  final MemoryTrainingPreferences trainingPreferences;
   late final HeartRateController hr;
   final clock = TestClock(),
       ticker = TestTicker(),

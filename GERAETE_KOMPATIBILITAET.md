@@ -93,3 +93,38 @@ Journal/Outbox und Wiederherstellung sind automatisiert getestet. Diese Software
 sind keine neue Hardwarevalidierung: das tatsächliche Widerstandsverhalten beim
 Treten sowie native Journal-/Lifecycle-/Secure-Storage-Integration auf Windows
 bleiben gesondert zu prüfen. In diesem Arbeitsschritt wurden keine Builds ausgeführt.
+
+## Adaptive ERG-Entlastung
+
+Die Flutter-Anwendung bietet optional eine lokal gespeicherte adaptive
+ERG-Entlastung. Normales ERG bleibt standardmäßig aktiv. Erst wenn eine gemessene
+Kadenz mindestens zwei Sekunden mehr als 3 rpm unter der Blockvorgabe liegt, wird
+das effektive Trainerziel mit 5 W/s abgesenkt. Die Entlastung bleibt auf 10 % der
+aktuellen Vorgabe begrenzt und erholt sich mit 4 W/s. Fehlende oder 0-rpm-Kadenz
+löst keine neue Entlastung aus. Blockwechsel, Pause, Verbindungsverlust und
+Fortsetzen setzen den Regelzustand zurück. FTP-Rampentests ignorieren die Option
+zwingend. Vorgabe, bestätigtes effektives Trainerziel und Entlastung bleiben in der
+Trainingsansicht getrennt sichtbar.
+
+Diagnoseereignisse enthalten nur Moduswechsel sowie Vorgabe, bestätigtes Ziel und
+Entlastung in Watt. Sie enthalten keine Account-, Plan-, Workout- oder Sensordaten.
+Ein Ziel gilt weiterhin erst nach erfolgreicher FTMS-Control-Point-Bestätigung.
+
+### Aufgeschobener KICKR-CORE-Test
+
+Dieser Ablauf wird wegen der aktuellen Verletzung **nicht ausgeführt**. Sobald ein
+freiwilliger Belastungstest gesundheitlich möglich ist:
+
+1. KICKR CORE verbinden, ein kurzes niedrig belastendes Workout mit Kadenzvorgabe
+   auswählen und zunächst normales ERG bei der niedrigsten angenehmen Leistung prüfen.
+2. Adaptive ERG einschalten, stabil treten und bestätigen, dass Vorgabe und
+   effektives Ziel identisch bleiben.
+3. Die Kadenz nur kontrolliert unter die Schwelle sinken lassen; Anzeige und Log auf
+   verzögerte, begrenzte Entlastung prüfen. Bei Beschwerden sofort stoppen.
+4. Zur Zielkadenz zurückkehren und die graduelle Erholung prüfen.
+5. Pause, Fortsetzen und einen kurzen Bluetooth-Abbruch prüfen; danach darf keine
+   alte Entlastung automatisch wiederverwendet werden.
+6. FTP-Rampentest nur ohne Treten laden und prüfen, dass der Schalter deaktiviert ist.
+
+Bis dieser Ablauf tatsächlich durchgeführt wurde, ist Adaptive ERG ausschließlich
+**softwarevalidiert**, nicht hardwarevalidiert.

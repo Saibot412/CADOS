@@ -130,6 +130,15 @@ echte `plan_id` zugeordnet.
 401-, 409- und Netzwerkfehler erzeugen keinen optimistischen Kalenderzustand; Erfolg
 erscheint erst nach Serverbestätigung und erneut geladenem autoritativem Snapshot.
 
+Adaptive ERG ist eine optionale, lokal gespeicherte Entlastungsregelung; normales ERG
+bleibt Standard. Nach anhaltend niedriger gemessener Kadenz wird ausschließlich das
+effektive Trainerziel langsam und auf höchstens 10 % Entlastung begrenzt reduziert.
+Vorgabe, bestätigtes Trainerziel und Entlastung werden getrennt dargestellt. Fehlende
+Kadenz löst keine Entlastung aus, Sicherheitsübergänge setzen den Zustand zurück und
+FTP-Rampentests deaktivieren die Funktion zwingend. Der Algorithmus und der bestätigte
+FTMS-Befehlspfad sind softwaregetestet; ein körperlicher Hardwaretest bleibt wegen der
+Verletzung ausdrücklich ausstehend.
+
 Trainer- und HR-Controller mit universal_ble, Backoff 1/2/4/8/16 Sekunden,
 Gerätepräferenzen und dauerhaftem rotiertem Log bleiben erhalten. Diagnostik und
 Dateiexport befinden sich sekundär unter Einstellungen → Diagnostik & Support.

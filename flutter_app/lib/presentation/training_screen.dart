@@ -49,6 +49,25 @@ class TrainingScreen extends StatelessWidget {
               session.error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
+          SwitchListTile(
+            key: const Key('adaptiveErgToggle'),
+            contentPadding: EdgeInsets.zero,
+            value: session.adaptiveErgAllowed
+                ? session.adaptiveErgPreferred
+                : false,
+            onChanged:
+                enabled && session.initialized && session.adaptiveErgAllowed
+                ? session.setAdaptiveErg
+                : null,
+            title: const Text('Adaptive ERG-Entlastung'),
+            subtitle: Text(
+              session.adaptiveErgAllowed
+                  ? 'Optional: senkt das Trainerziel bei anhaltend niedriger Kadenz '
+                        'langsam um höchstens 10 %. Standard-ERG bleibt bei ausgeschaltetem Schalter unverändert.'
+                  : 'Für FTP-Rampentests ist adaptive Entlastung aus Sicherheitsgründen '
+                        'vorübergehend deaktiviert; die Einstellung bleibt gespeichert.',
+            ),
+          ),
           if (!session.initialized)
             TextButton(
               onPressed: enabled ? session.initialize : null,
@@ -122,9 +141,19 @@ class TrainingScreen extends StatelessWidget {
                 session.watts == null ? '–' : '${session.watts} W',
               ),
               _metric(
-                'Zielleistung',
-                session.target == null ? '–' : '${session.target} W',
+                'Vorgabe',
+                session.prescribedTarget == null
+                    ? '–'
+                    : '${session.prescribedTarget} W',
               ),
+              _metric(
+                'Effektives Trainerziel',
+                session.effectiveTrainerTarget == null
+                    ? '–'
+                    : '${session.effectiveTrainerTarget} W',
+              ),
+              if (session.adaptiveErgActive)
+                _metric('ERG-Entlastung', '${session.adaptiveReliefWatts} W'),
               _metric(
                 'Kadenz',
                 session.cadence == null
