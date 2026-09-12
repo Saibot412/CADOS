@@ -1,7 +1,7 @@
 # CADOS Flutter application
 
 The production client lives in `flutter_app/` (package `cados_app`). Material 3
-navigation provides Heute, Workouts, Training and Einstellungen on desktop and mobile.
+navigation provides Kalender, Workouts, Training and Einstellungen on desktop and mobile.
 Runtime uses real HTTP, secure token storage, universal_ble, file device preferences
 and durable diagnostics. There are no bundled demo accounts, workouts or telemetry.
 The Python connector and FastAPI/PostgreSQL server remain unchanged.
@@ -40,8 +40,14 @@ workouts are read-only and can only become new private copies. Dirty editors req
 explicit discard decision. JSON and ZWO files up to 2 MB use the native file picker and
 are sent as unchanged raw bytes to authenticated `/api/v1/import`; successful import opens only the
 authoritative refreshed workout. Deletes require confirmation, upload a tombstone with
-the current revision and do not alter historical sessions. Calendar editing remains
-deferred.
+the current revision and do not alter historical sessions. The responsive calendar
+shows real plans by local calendar day, creates UUID/revision-zero plans, moves them
+with their current revision and removes them only after confirmation. Every mutation
+retains unknown payload fields and counts as saved only after acknowledgement plus an
+authoritative refresh. Server-compatible UUID spellings are compared by identity so
+one valid legacy record cannot invalidate the snapshot. Missing workouts and past
+plans cannot start; completed sessions are matched by their real `plan_id`. Offline,
+authentication and conflict failures remain visible without optimistic calendar state.
 Absent network/data/devices show explicit unavailable/empty/disconnected states.
 
 ## Architecture
@@ -67,6 +73,8 @@ Absent network/data/devices show explicit unavailable/empty/disconnected states.
   through Flutter's `file_selector`. The diagnostic port is widget-independent.
 - `lib/features/account`: API ports/config and observable session state.
 - `lib/features/catalog`: pure Dart typed server records with original payloads.
+- `lib/features/calendar`: immutable local-date plan drafts with lossless extension
+  handling and authoritative workout availability checks.
 - `lib/features/session`: durable execution/sync plus explicit FTP-adoption state.
 - `lib/infrastructure/account`: HTTP, secure tokens and atomic server preferences.
 - `lib/presentation`: responsive shell, account/catalog screens and device panels.

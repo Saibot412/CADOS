@@ -11,6 +11,10 @@ void main() {
   testWidgets(
     'real catalog plan selection, readiness, measured values and start control',
     (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final h = SessionHarness();
       await h.prepare();
       await tester.pumpWidget(
@@ -21,7 +25,12 @@ void main() {
           sync: h.sync,
         ),
       );
-      await tester.tap(find.text('Vorbereiten').first);
+      final planDate = h.account.catalog!.upcoming(DateTime.now()).single.date;
+      await tester.tap(find.byKey(Key('calendarDay-$planDate')));
+      await tester.pumpAndSettle();
+      final prepare = find.text('Vorbereiten').first;
+      await tester.ensureVisible(prepare);
+      await tester.tap(prepare);
       await tester.pumpAndSettle();
       expect(h.session.planId, 'ae2b4ea1-7d26-458e-b2c6-a8c7844ebf3d');
       expect(

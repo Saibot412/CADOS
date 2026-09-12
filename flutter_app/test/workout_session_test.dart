@@ -70,6 +70,36 @@ void main() {
     },
   );
   test(
+    'server-compatible plan UUIDs select, start and canonicalize journal link',
+    () async {
+      await h.prepare();
+      const canonicalPlan = 'ae2b4ea1-7d26-458e-b2c6-a8c7844ebf3d';
+      const serverPlan =
+          '{{urn:uuid:urn:uuid:ae2b4ea1-7d26-458e-b2c6-a8c7844ebf3d}}';
+      final workout = h.account.catalog!.workouts.single;
+      final profile = h.account.catalog!.profiles.single;
+      h.account.catalog = Catalog.fromJson({
+        'records': [
+          workout.record.toJson(),
+          profile.record.toJson(),
+          record(serverPlan, 'plan', {
+            'date': '2026-09-12',
+            'workout_id': workout.record.id.toUpperCase(),
+            'workout_name': workout.name,
+          }),
+        ],
+      });
+
+      expect(h.session.select(workout, plan: serverPlan), isTrue);
+      expect(h.session.planId, canonicalPlan);
+      await h.session.start();
+
+      expect(h.session.hasSession, isTrue);
+      expect(h.session.data!.planId, canonicalPlan);
+      expect(h.transport.starts, 1);
+    },
+  );
+  test(
     'start gates profile/catalog/device; no default FTP or missing workouts',
     () async {
       await h.session.initialize();

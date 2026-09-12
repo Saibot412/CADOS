@@ -6,6 +6,7 @@ import '../features/account/account_controller.dart';
 import '../features/trainer/trainer_controller.dart';
 import '../features/heart_rate/heart_rate_controller.dart';
 import 'account_settings.dart';
+import 'calendar_page.dart';
 import 'catalog_pages.dart';
 import 'diagnostics_panel.dart';
 import 'training_screen.dart';
@@ -52,7 +53,7 @@ class _CadosAppState extends State<CadosApp> with WidgetsBindingObserver {
   }
 
   int selected = 0;
-  static const labels = ['Heute', 'Workouts', 'Training', 'Einstellungen'];
+  static const labels = ['Kalender', 'Workouts', 'Training', 'Einstellungen'];
   static const icons = [
     Icons.today,
     Icons.library_books,
@@ -101,20 +102,21 @@ class _CadosAppState extends State<CadosApp> with WidgetsBindingObserver {
       builder: (context, _) {
         final a = widget.account;
         final pages = [
-          CatalogPage(
+          CalendarPage(
             account: a,
-            workouts: false,
             onSelect: (workout, plan) {
-              widget.session.select(workout, plan: plan);
-              setState(() => selected = 2);
+              if (widget.session.select(workout, plan: plan)) {
+                setState(() => selected = 2);
+              }
             },
           ),
           CatalogPage(
             account: a,
             workouts: true,
             onSelect: (workout, plan) {
-              widget.session.select(workout, plan: plan);
-              setState(() => selected = 2);
+              if (widget.session.select(workout, plan: plan)) {
+                setState(() => selected = 2);
+              }
             },
           ),
           TrainingScreen(session: widget.session, sync: widget.sync),

@@ -130,8 +130,8 @@ class WorkoutSessionController extends ChangeNotifier {
             .upcoming(clock.now().toLocal())
             .any(
               (p) =>
-                  p.record.id == planId &&
-                  p.workoutId == current.single.record.id,
+                  sameUuid(p.record.id, planId!) &&
+                  sameUuid(p.workoutId, current.single.record.id),
             )) {
       throw const FormatException('Geplante Einheit ist nicht mehr verfügbar.');
     }

@@ -161,11 +161,13 @@ class CatalogPage extends StatelessWidget {
               title: Text(plan.workoutName),
               subtitle: Text(plan.date),
               trailing:
-                  catalog.workouts.any((w) => w.record.id == plan.workoutId)
+                  catalog.workouts.any(
+                    (w) => sameUuid(w.record.id, plan.workoutId),
+                  )
                   ? FilledButton(
                       onPressed: () => onSelect(
                         catalog.workouts.firstWhere(
-                          (w) => w.record.id == plan.workoutId,
+                          (w) => sameUuid(w.record.id, plan.workoutId),
                         ),
                         plan.record.id,
                       ),

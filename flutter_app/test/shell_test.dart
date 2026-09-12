@@ -27,7 +27,7 @@ void main() {
         );
         expect(
           find.text(
-            'Bitte in Einstellungen anmelden, um deine CADOS-Daten zu laden.',
+            'Bitte in Einstellungen anmelden, um deinen Kalender zu laden.',
           ),
           findsOneWidget,
         );
@@ -52,10 +52,9 @@ void main() {
           find.text('Keine Workouts in deiner Bibliothek.'),
           findsOneWidget,
         );
-        await tester.tap(find.text('Heute').last);
+        await tester.tap(find.text('Kalender').last);
         await tester.pumpAndSettle();
-        expect(find.text('Keine kommenden Einheiten geplant.'), findsOneWidget);
-        expect(find.text('Kein Profil vorhanden.'), findsOneWidget);
+        expect(find.text('Keine Einheiten an diesem Tag.'), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
         await tester.pump();
       },

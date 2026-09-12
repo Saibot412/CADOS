@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../catalog/records.dart';
 import '../workout/workout_parser.dart';
 
 /// Validate our outgoing WorkoutSessionRecord before persistence/upload. Local
@@ -36,7 +37,7 @@ void validateSessionEntry(Map<String, dynamic> entry) {
       }
     }
     if (p['plan_id'] != null &&
-        (p['plan_id'] is! String || !uuid.hasMatch(p['plan_id'] as String))) {
+        (p['plan_id'] is! String || !isValidUuid(p['plan_id'] as String))) {
       throw const FormatException();
     }
     if (!['completed', 'stopped'].contains(p['status']) ||

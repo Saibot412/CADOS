@@ -67,11 +67,162 @@ class WorkoutBlockRecord {
 }
 
 class PlanRecord {
-  PlanRecord(this.record);
+  PlanRecord(this.record) {
+    if (record.kind != 'plan' ||
+        record.deleted ||
+        record.shared ||
+        !isValidUuid(record.id)) {
+      throw const FormatException('Invalid plan envelope.');
+    }
+    validatePayload(record.payload);
+  }
+
+  static void validatePayload(Map<String, dynamic> payload) {
+    final date = payload['date'];
+    final workoutId = payload['workout_id'];
+    final workoutName = payload['workout_name'];
+    if (!isLocalCalendarDate(date) ||
+        workoutId is! String ||
+        !isValidUuid(workoutId) ||
+        workoutName is! String ||
+        workoutName.trim().isEmpty ||
+        workoutName.length > 200) {
+      throw const FormatException('Invalid plan payload.');
+    }
+  }
+
   final SyncRecord record;
   String get date => record.payload['date'] as String;
   String get workoutId => record.payload['workout_id'] as String;
   String get workoutName => record.payload['workout_name'] as String;
+}
+
+final RegExp _uuidHex = RegExp(r'^[0-9a-f]{32}$');
+const _decimalZeros = <int>[
+  0x30,
+  0x660,
+  0x6F0,
+  0x7C0,
+  0x966,
+  0x9E6,
+  0xA66,
+  0xAE6,
+  0xB66,
+  0xBE6,
+  0xC66,
+  0xCE6,
+  0xD66,
+  0xDE6,
+  0xE50,
+  0xED0,
+  0xF20,
+  0x1040,
+  0x1090,
+  0x17E0,
+  0x1810,
+  0x1946,
+  0x19D0,
+  0x1A80,
+  0x1A90,
+  0x1B50,
+  0x1BB0,
+  0x1C40,
+  0x1C50,
+  0xA620,
+  0xA8D0,
+  0xA900,
+  0xA9D0,
+  0xA9F0,
+  0xAA50,
+  0xABF0,
+  0xFF10,
+  0x104A0,
+  0x10D30,
+  0x11066,
+  0x110F0,
+  0x11136,
+  0x111D0,
+  0x112F0,
+  0x11450,
+  0x114D0,
+  0x11650,
+  0x116C0,
+  0x11730,
+  0x118E0,
+  0x11950,
+  0x11C50,
+  0x11D50,
+  0x11DA0,
+  0x16A60,
+  0x16AC0,
+  0x16B50,
+  0x1D7CE,
+  0x1D7D8,
+  0x1D7E2,
+  0x1D7EC,
+  0x1D7F6,
+  0x1E140,
+  0x1E2F0,
+  0x1E950,
+  0x1FBF0,
+];
+
+/// Mirrors Python's UUID(string) forms so one server-valid record cannot make
+/// the complete authoritative snapshot unreadable.
+String? normalizedUuid(String value) {
+  final candidate = value
+      .replaceAll('urn:', '')
+      .replaceAll('uuid:', '')
+      .replaceFirst(RegExp(r'^[{}]+'), '')
+      .replaceFirst(RegExp(r'[{}]+$'), '')
+      .replaceAll('-', '');
+  final ascii = StringBuffer();
+  for (final rune in candidate.runes) {
+    if (rune >= 0x30 && rune <= 0x39 ||
+        rune >= 0x41 && rune <= 0x46 ||
+        rune >= 0x61 && rune <= 0x66) {
+      ascii.writeCharCode(rune >= 0x41 && rune <= 0x46 ? rune + 0x20 : rune);
+      continue;
+    }
+    int? digit;
+    for (final zero in _decimalZeros) {
+      if (rune >= zero && rune <= zero + 9) {
+        digit = rune - zero;
+        break;
+      }
+    }
+    if (digit == null) return null;
+    ascii.write(digit);
+  }
+  final normalized = ascii.toString();
+  return _uuidHex.hasMatch(normalized) ? normalized : null;
+}
+
+bool isValidUuid(String value) => normalizedUuid(value) != null;
+
+String? canonicalUuid(String value) {
+  final hex = normalizedUuid(value);
+  if (hex == null) return null;
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20)}';
+}
+
+bool sameUuid(String left, String right) {
+  final normalizedLeft = normalizedUuid(left);
+  return normalizedLeft != null && normalizedLeft == normalizedUuid(right);
+}
+
+bool isLocalCalendarDate(Object? value) {
+  if (value is! String) return false;
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+  if (match == null) return false;
+  final year = int.parse(match.group(1)!);
+  final month = int.parse(match.group(2)!);
+  final day = int.parse(match.group(3)!);
+  if (year == 0) return false;
+  final parsed = DateTime.utc(year, month, day);
+  return parsed.year == year && parsed.month == month && parsed.day == day;
 }
 
 class SessionRecord {
@@ -278,15 +429,10 @@ class Catalog {
             }
           }
         case 'plan':
-          requiredField<String>('date');
-          requiredField<String>('workout_id');
-          requiredField<String>('workout_name');
-          final date = p['date'] as String;
-          final parsed = DateTime.tryParse(date);
-          if (parsed == null ||
-              parsed.toIso8601String().substring(0, 10) != date) {
-            throw const FormatException('Invalid plan date.');
+          if (r.revision < 1) {
+            throw const FormatException('Invalid synchronized plan revision.');
           }
+          PlanRecord(r);
         case 'session':
           requiredField<String>('status');
           requiredField<String>('workout_name');
@@ -312,11 +458,14 @@ class Catalog {
     final completed = sessions
         .where((s) => s.status == 'completed')
         .map((s) => s.planId)
-        .toSet();
+        .whereType<String>()
+        .toList();
     return active('plan')
         .map(PlanRecord.new)
         .where(
-          (p) => p.date.compareTo(day) >= 0 && !completed.contains(p.record.id),
+          (p) =>
+              p.date.compareTo(day) >= 0 &&
+              !completed.any((planId) => sameUuid(planId, p.record.id)),
         )
         .toList()
       ..sort((a, b) => a.date.compareTo(b.date));

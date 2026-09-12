@@ -284,7 +284,10 @@ void main() {
     expect(http.requests.last.uri.path, '/api/v1/auth/logout');
   });
   test('snapshot preserves unknowns, revisions, tombstones and shared visibility; only completed plan links count', () {
-    final shared = record('w', 'workout', {
+    const sharedId = '8da0c2f1-91b7-447a-8bcb-c7a12f02c058';
+    const completedPlanId = '3dd24f95-5f34-45d8-b843-3559fa66b572';
+    const nextPlanId = '67fb8036-2189-4760-b4a2-fc9963875f31';
+    final shared = record(sharedId, 'workout', {
       'name': 'Real server workout',
       'blocks': [
         {
@@ -301,25 +304,25 @@ void main() {
         shared,
         record('gone', 'workout', {}, deleted: true),
         record('profile', 'profile', {'name': 'Rider', 'ftp': 245}),
-        record('p', 'plan', {
-          'workout_id': 'w',
+        record(completedPlanId, 'plan', {
+          'workout_id': sharedId,
           'workout_name': 'Planned',
           'date': '2026-09-11',
         }),
-        record('next', 'plan', {
-          'workout_id': 'w',
+        record(nextPlanId, 'plan', {
+          'workout_id': sharedId,
           'workout_name': 'Next',
           'date': '2026-09-12',
         }),
         record('s', 'session', {
-          'plan_id': 'p',
+          'plan_id': completedPlanId,
           'status': 'completed',
           'timestamp': '2026-09-11T08:00:00Z',
           'duration_sec': 90,
           'workout_name': 'Planned',
         }),
         record('s2', 'session', {
-          'plan_id': 'next',
+          'plan_id': nextPlanId,
           'status': 'stopped',
           'timestamp': '2026-09-11T09:00:00Z',
           'duration_sec': 10,
@@ -331,7 +334,7 @@ void main() {
     expect(c.workouts.single.duration, 90);
     expect(c.workouts.single.blocks.single.endWatts, 250.5);
     expect(c.profiles.single.ftp, 245);
-    expect(c.upcoming(DateTime(2026, 9, 11)).single.record.id, 'next');
+    expect(c.upcoming(DateTime(2026, 9, 11)).single.record.id, nextPlanId);
     expect(c.records.length, 7);
   });
 }

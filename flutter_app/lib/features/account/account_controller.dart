@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/json_value.dart';
 import 'api.dart';
 import '../catalog/records.dart';
 import '../session/session_acknowledgement.dart';
@@ -144,9 +145,13 @@ class AccountController extends ChangeNotifier {
           status: 409,
         );
       }
-      final candidate = Catalog.fromJson({
-        'records': [change],
-      }).records.single;
+      final rawCandidate = SyncRecord.fromJson(change);
+      final candidate =
+          rawCandidate.kind == 'plan' && rawCandidate.revision == 0
+          ? PlanRecord(rawCandidate).record
+          : Catalog.fromJson({
+              'records': [change],
+            }).records.single;
       final reply = Catalog.fromJson(
         await _api.request(
           '/sync',
@@ -175,7 +180,12 @@ class AccountController extends ChangeNotifier {
       if (refreshed.length != 1 ||
           refreshed.single.kind != acknowledgements.single.kind ||
           refreshed.single.revision != acknowledgements.single.revision ||
-          refreshed.single.deleted != acknowledgements.single.deleted) {
+          refreshed.single.deleted != acknowledgements.single.deleted ||
+          refreshed.single.shared != acknowledgements.single.shared ||
+          !jsonValuesEqual(
+            refreshed.single.payload,
+            acknowledgements.single.payload,
+          )) {
         throw const ApiFailure(
           'Der aktualisierte Serverstand konnte nicht bestätigt werden.',
         );

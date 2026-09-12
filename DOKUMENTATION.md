@@ -74,7 +74,7 @@ Serverinstallation und Betrieb: [server/README.md](server/README.md).
 ## Entwicklung
 
 Die CADOS-Flutter-Anwendung liegt unter [`flutter_app`](flutter_app/README.md)
-(Paket `cados_app`). Heute, Workouts, Training und Einstellungen verwenden responsive
+(Paket `cados_app`). Kalender, Workouts, Training und Einstellungen verwenden responsive
 Material-3-Navigation. Anmeldung, sichere Tokenablage und Sitzungswiederherstellung
 nutzen die vorhandenen `/api/v1/auth`-Endpunkte. Die Serveradresse ist in Einstellungen
 konfigurierbar; Standard ist `https://cados.saibot.at`.
@@ -116,7 +116,19 @@ und Tokens werden nicht protokolliert. Erst nach Serverbestätigung und erneutem
 autoritativen Snapshot öffnet die App das importierte Workout. Löschen erfordert eine
 Bestätigung und erzeugt einen revisionsgebundenen Tombstone; historische Sessions
 bleiben unverändert. HTTP-/Netzwerkfehler und Revisionskonflikte werden sichtbar, nie
-als Erfolg behandelt. Die Kalenderbearbeitung bleibt offen.
+als Erfolg behandelt.
+
+Der responsive Kalender zeigt echte Plan-Datensätze monats- und tageweise. Neue
+Planungen erhalten eine stabile UUID und Revision 0; Verschieben oder Ändern verwendet
+die aktuelle Datensatzrevision, und Entfernen erzeugt erst nach Bestätigung einen
+Tombstone. Lokale Tage bleiben als `YYYY-MM-DD` ohne UTC-Verschiebung erhalten.
+Unbekannte zukünftige Payload-Felder werden bei Änderungen bewahrt. Fehlt das
+referenzierte Workout oder wurde es gelöscht, ist der Plan nicht startbar; dasselbe
+gilt für vergangene Kalendertage. Servergültige UUID-Schreibweisen werden über ihre
+UUID-Identität verglichen. Eine abgeschlossene Session wird ausschließlich über ihre
+echte `plan_id` zugeordnet.
+401-, 409- und Netzwerkfehler erzeugen keinen optimistischen Kalenderzustand; Erfolg
+erscheint erst nach Serverbestätigung und erneut geladenem autoritativem Snapshot.
 
 Trainer- und HR-Controller mit universal_ble, Backoff 1/2/4/8/16 Sekunden,
 Gerätepräferenzen und dauerhaftem rotiertem Log bleiben erhalten. Diagnostik und
@@ -137,8 +149,8 @@ autoritative Bestätigung entfernt die Einheit. Anschließend wird der Katalog s
 serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellung
 und weitere Details stehen im Flutter-README. Lokale zeitgewichtete Trainingsmetriken,
 Normalized Power/IF/TSS und die gemessene FTP-Rampentest-Auswertung sind integriert
-und werden aus dem Journal wiederhergestellt. Adaptive ERG, Blocknavigation und der
-Kalendereditor sind weiterhin offen.
+und werden aus dem Journal wiederhergestellt. Adaptive ERG und Blocknavigation sind
+weiterhin offen.
 
 Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
 Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.

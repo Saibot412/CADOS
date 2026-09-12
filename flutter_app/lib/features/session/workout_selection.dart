@@ -49,12 +49,13 @@ extension WorkoutSelection on WorkoutSessionController {
     return null;
   }
 
-  void select(WorkoutRecord workout, {String? plan}) {
+  bool select(WorkoutRecord workout, {String? plan}) {
     if (!canSelect) {
       error = 'Bitte die laufende oder gesicherte Einheit zuerst beenden.';
       _changed();
-      return;
+      return false;
     }
+    var success = false;
     try {
       final current = account.catalog?.workouts
           .where((w) => w.record.id == workout.record.id)
@@ -69,19 +70,23 @@ extension WorkoutSelection on WorkoutSessionController {
           !account.catalog!
               .upcoming(clock.now().toLocal())
               .any(
-                (p) => p.record.id == plan && p.workoutId == workout.record.id,
+                (p) =>
+                    sameUuid(p.record.id, plan) &&
+                    sameUuid(p.workoutId, workout.record.id),
               )) {
         throw const FormatException(
           'Geplante Einheit ist nicht mehr verfügbar.',
         );
       }
       selected = current.single;
-      planId = plan;
+      planId = plan == null ? null : canonicalUuid(plan);
       engine = null;
       error = null;
+      success = true;
     } on FormatException catch (e) {
       error = e.message;
     }
     _changed();
+    return success;
   }
 }
