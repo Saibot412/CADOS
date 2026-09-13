@@ -220,43 +220,77 @@ void main() {
       );
     } finally {
       // Tombstones preserve sync history while removing both temporary records
-      // from every active product view. Cleanup is attempted even after a failure.
+      // from every active product view. Cleanup is retried and an unavailable
+      // authoritative snapshot is a failure, never evidence of zero leftovers.
+      Object? cleanupFailure;
       if (account != null) {
-        for (final id in [sessionId, workoutId].whereType<String>()) {
-          try {
-            await account.refresh();
-            final record = account.catalog?.records
-                .where((candidate) => candidate.id == id && !candidate.deleted)
-                .firstOrNull;
-            if (record != null) {
-              await account.mutateRecord({
-                ...record.toJson(),
-                'deleted': true,
-              }, expectedGeneration: account.syncGeneration);
+        try {
+          for (final id in [sessionId, workoutId].whereType<String>()) {
+            Object? lastFailure;
+            var cleaned = false;
+            for (var attempt = 0; attempt < 3 && !cleaned; attempt++) {
+              try {
+                await account.refresh();
+                if (account.error != null || account.catalog == null) {
+                  throw StateError(
+                    'Authoritative cleanup snapshot unavailable.',
+                  );
+                }
+                final record = account.catalog!.records
+                    .where(
+                      (candidate) => candidate.id == id && !candidate.deleted,
+                    )
+                    .firstOrNull;
+                if (record == null) {
+                  cleaned = true;
+                  continue;
+                }
+                await account.mutateRecord({
+                  ...record.toJson(),
+                  'deleted': true,
+                }, expectedGeneration: account.syncGeneration);
+                cleaned = true;
+              } catch (error) {
+                lastFailure = error;
+              }
             }
-          } catch (_) {
-            // The failing test reports cleanup status below without credentials.
+            if (!cleaned) {
+              throw StateError(
+                'Temporary production record cleanup failed: $lastFailure',
+              );
+            }
           }
+          await account.refresh();
+          if (account.error != null || account.catalog == null) {
+            throw StateError(
+              'Final authoritative cleanup snapshot unavailable.',
+            );
+          }
+          final leftovers = account.catalog!.records
+              .where(
+                (record) =>
+                    (record.id == workoutId || record.id == sessionId) &&
+                    !record.deleted,
+              )
+              .length;
+          if (leftovers != 0) {
+            throw StateError('Temporary production records remain active.');
+          }
+        } catch (error) {
+          cleanupFailure = error;
         }
-        await account.refresh();
-        final leftovers =
-            account.catalog?.records
-                .where(
-                  (record) =>
-                      (record.id == workoutId || record.id == sessionId) &&
-                      !record.deleted,
-                )
-                .length ??
-            0;
-        expect(
-          leftovers,
-          0,
-          reason: 'Temporary production records were not tombstoned.',
-        );
-        await account.logout();
-        account.dispose();
+        try {
+          await account.logout();
+        } finally {
+          account.dispose();
+        }
       }
       client.close();
+      if (cleanupFailure != null) {
+        fail(
+          'Production cleanup could not be authoritatively confirmed: $cleanupFailure',
+        );
+      }
     }
   }, timeout: const Timeout(Duration(minutes: 2)));
 }

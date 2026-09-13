@@ -19,8 +19,8 @@ jobs:
         shell: pwsh
         working-directory: flutter_app
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v7.0.1
+      - uses: subosito/flutter-action@v2.23.0
         with:
           flutter-version: "3.47.3"
           channel: stable
@@ -63,7 +63,7 @@ jobs:
           "checksum=$checksum" >> $env:GITHUB_OUTPUT
           "asset_name=$(Split-Path $zip -Leaf)" >> $env:GITHUB_OUTPUT
       - name: Upload verified Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.package.outputs.asset_name }}
           path: |
@@ -73,7 +73,7 @@ jobs:
           retention-days: 30
       - name: Publish tagged GitHub release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.3
         with:
           name: CADOS Flutter ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md

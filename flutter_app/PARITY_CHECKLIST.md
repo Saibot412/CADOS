@@ -31,7 +31,7 @@ noch echten Produktions-, Windows- oder Hardware-Nachweis.
 - [x] Punkte 1–5 vollständig implementiert und jeweils durch Flutter-/Python-Tests und CI bestätigt.
 - [x] Python-Connector bleibt als Rückfalloption im Repository und wird nicht entfernt.
 - [x] Produktions-E2E-Harness liegt außerhalb der normalen Suite und liest Credentials nur aus der Umgebung.
-- [ ] Echten E2E-Lauf gegen `https://cados.saibot.at` erfolgreich ausführen: Login, `/auth/me`, Restore, `/sync`, temporäres Workout, absichtlicher 409, temporäre Session, 401/Offline-Probe und Tombstone-Bereinigung.
+- [x] Echten E2E-Lauf gegen `https://cados.saibot.at` erfolgreich ausgeführt: Login, `/auth/me`, Restore, `/sync`, temporäres Workout, absichtlicher 409, temporäre Session, 401/Offline-Probe und Tombstone-Bereinigung.
 - [ ] Windows-Workflow auf nativem Runner erfolgreich: Format, Analyze, Tests und Release-Build.
 - [ ] Vollständiges Runner-Verzeichnis als ZIP und SHA-256 veröffentlichen; nicht nur die EXE.
 - [ ] Frisch entpacktes Paket auf Windows starten und Secure Storage, Dateidialog sowie BLE-Verbindungen ohne Pedalbelastung prüfen.
