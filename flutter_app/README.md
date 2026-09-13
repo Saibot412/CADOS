@@ -135,8 +135,8 @@ the rider is injured; no platform build or load test was performed for this step
   a ramp. Disconnect pauses without counting missing time. Manual pause/resume,
   stop/restart, cumulative watt adjustment and target clamp 0–32767 are covered.
 
-This is **not full Python WorkoutEngine parity**: adaptive ERG and block navigation
-remain deferred. Time-weighted local metrics, FTP-test
+This is **full software parity for the supported workout-execution slice**, including
+adaptive ERG and block navigation. Time-weighted local metrics, FTP-test
 cadence termination, local FTP-test assessment and normalized power/TSS summaries
 now use submitted real samples. The server still independently verifies and can
 augment FTP-test results. Session execution, journal
@@ -211,7 +211,15 @@ Ein späterer Versuch erkennt bereits gespeicherte Sessions anhand UUID und Payl
 werden nie überschrieben. Nach Anmeldung/Refresh und per Schaltfläche wird erneut
 versucht; Profil-Maximalpuls wird aus dem aktualisierten GET-Snapshot übernommen.
 
-## Validation and remaining hardware evidence
+## Validation, parity and remaining hardware evidence
+
+The detailed product/server/gap matrix and final release gates are maintained in
+[`PARITY_CHECKLIST.md`](PARITY_CHECKLIST.md). The explicit production E2E harness is
+`tool/production_e2e_test.dart`; it is never part of an ordinary `flutter test` run
+and requires credentials solely through `CADOS_E2E_EMAIL` and
+`CADOS_E2E_PASSWORD` (optional `CADOS_E2E_SERVER`). It verifies real login,
+`/auth/me`, token restoration, sync, conflict handling, temporary workout/session
+mutations and tombstone cleanup without printing credentials.
 
 Observed on real hardware: Windows KICKR CORE FTMS scan/connect, subscriptions,
 Request Control, target power, Start and Stop acceptance; simultaneous Garmin Fenix
@@ -231,5 +239,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests
 git diff --check
 ```
 
-GitHub Actions runs formatting, analysis and tests only. No build is part of this
-phase; eventual builds are reserved for Windows after the entire migration.
+GitHub Actions runs formatting, analysis and tests for every Flutter change. The separate
+native Windows workflow repeats those gates on `windows-latest`, builds the complete
+release bundle and uploads a portable ZIP plus SHA-256. Manual runs create a CI artifact;
+a `flutter-v*` tag additionally publishes both files as a GitHub release. This is not an
+installer: extract the whole ZIP and keep `cados_app.exe`, DLLs and `data/` together.

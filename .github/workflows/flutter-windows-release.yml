@@ -1,0 +1,86 @@
+name: CADOS Flutter Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "flutter-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.3"
+          channel: stable
+          cache: true
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test tool
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build release
+        run: flutter build windows --release
+      - name: Verify and package complete runner bundle
+        id: package
+        run: |
+          $bundle = Resolve-Path "build/windows/x64/runner/Release"
+          $required = @(
+            (Join-Path $bundle "cados_app.exe"),
+            (Join-Path $bundle "flutter_windows.dll"),
+            (Join-Path $bundle "data")
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) { throw "Missing Windows bundle component: $path" }
+          }
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "manual-$($env:GITHUB_RUN_NUMBER)" }
+          $stage = Join-Path $env:RUNNER_TEMP "CADOS-Flutter-Windows"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Path (Join-Path $bundle "*") -Destination $stage -Recurse -Force
+          $zip = Join-Path $env:GITHUB_WORKSPACE "CADOS-Flutter-Windows-$version.zip"
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
+          if ((Get-Item $zip).Length -le 0) { throw "Windows archive is empty" }
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          $checksum = "$zip.sha256"
+          "$hash  $(Split-Path $zip -Leaf)" | Set-Content -Encoding ascii $checksum
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+          "asset_name=$(Split-Path $zip -Leaf)" >> $env:GITHUB_OUTPUT
+      - name: Upload verified Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.asset_name }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish tagged GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: CADOS Flutter ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.checksum }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

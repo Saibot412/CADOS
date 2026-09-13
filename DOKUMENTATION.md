@@ -159,16 +159,27 @@ serverseitig aktualisiertem Profilpuls geladen. Speichergrenzen, Wiederherstellu
 und weitere Details stehen im Flutter-README. Lokale zeitgewichtete Trainingsmetriken,
 Normalized Power/IF/TSS und die gemessene FTP-Rampentest-Auswertung sind integriert
 und werden aus dem Journal wiederhergestellt. Adaptive ERG und Blocknavigation sind
-weiterhin offen.
+inzwischen integriert und automatisiert geprüft.
+
+Die Gleichwertigkeitsmatrix, bewusst serverseitig verbleibenden Adminfunktionen,
+Hardwaregrenzen und finalen Release-Gates stehen in
+[`flutter_app/PARITY_CHECKLIST.md`](flutter_app/PARITY_CHECKLIST.md). Ein expliziter,
+nicht zur normalen Suite gehörender Produktions-E2E-Test prüft mit ausschließlich über
+Umgebungsvariablen gelieferten Zugangsdaten Login, `/auth/me`, Token-Restore, Sync,
+temporäre Workout-/Sessionmutationen, 401/409/Offlineverhalten und Tombstone-Bereinigung.
+Er spricht ausschließlich mit FastAPI und niemals direkt mit PostgreSQL.
 
 Real beobachtet wurden KICKR CORE FTMS-Befehlsannahme (Steuerfreigabe, Zielwatt,
 Start und Stop), gleichzeitiger Garmin-Fenix-HR-Empfang und HR-Reconnect.
 HR-Werte werden beim ersten Empfang und danach bei jedem 25. Wert protokolliert.
 Physische Widerstandsänderung beim Treten bleibt aufgeschoben. Weitere Geräte,
 native Exportdialoge und Plattform-Lebenszyklen benötigen zusätzliche Validierung.
-Python-Connector und FastAPI/PostgreSQL bleiben unverändert. Die CI führt nur
-Formatierung, Analyse und Tests aus; Builds sind bis zum Abschluss der Migration
-gesperrt und später ausschließlich für Windows vorgesehen.
+Python-Connector und FastAPI/PostgreSQL bleiben unverändert. Die reguläre CI führt
+Formatierung, Analyse und Tests aus. Der separate native Windows-Workflow wiederholt
+diese Gates auf `windows-latest`, baut das vollständige Release-Verzeichnis und erzeugt
+ein portables ZIP samt SHA-256; ein `flutter-v*`-Tag veröffentlicht beide Dateien als
+GitHub-Release. Das Paket ist kein Installer und bleibt mangels Codesignatur potenziell
+SmartScreen-pflichtig.
 
 ```bash
 python3 -m venv .venv

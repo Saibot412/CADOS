@@ -1,3 +1,38 @@
+# CADOS Flutter 1.0.0 – Windows
+
+Die produktive CADOS-Anwendung wurde von der früheren Web-/Connector-Bedienung in
+einen eigenständigen Flutter-Client für Windows überführt. Das bestehende FastAPI-/
+PostgreSQL-Backend und der Python-Connector bleiben als kompatible Rückfalloption erhalten.
+
+## Enthalten
+
+- Anmeldung an `https://cados.saibot.at`, sichere Tokenablage und Sitzungswiederherstellung
+- Autoritativer Sync für Profil/Zonen, Workouts, Kalender und Trainingshistorie
+- Workout-Erstellung, Kopieren, Bearbeiten, JSON-/ZWO-Import und bestätigtes Löschen
+- Lokales FTMS-Training mit KICKR-CORE-/Bluetooth-HR-Anbindung, Journal, Recovery und Outbox
+- Zeitgewichtete Metriken, FTP-Rampentest-Auswertung und bestätigte FTP-Übernahme
+- Optionales adaptives ERG mit bestätigten Trainerzielen und maximal 10 % Entlastung
+- Revisions-/Konfliktschutz ohne optimistische Überschreibung
+
+## Installation
+
+Dies ist **kein Installer**, sondern ein portables Windows-Paket. Die ZIP-Datei vollständig
+entpacken, alle DLLs und den Ordner `data/` neben der EXE belassen und anschließend
+`cados_app.exe` starten. Die beiliegende `.sha256`-Datei enthält die SHA-256-Prüfsumme
+des ZIP-Archivs. Windows SmartScreen kann bei der ersten Ausführung einer unsignierten
+App eine Warnung anzeigen.
+
+## Bewusst offene Hardware-Nachweise
+
+- Der native Windows-Build wird automatisiert auf einem Windows-GitHub-Runner erstellt.
+- KICKR CORE, Garmin-HR, Secure Storage, Dateidialog, Reconnect und Lifecycle müssen am
+  erzeugten Paket ohne körperliche Belastung final gegengeprüft werden.
+- Ein physischer ERG-Widerstandstest beim Treten wurde wegen der Verletzung nicht
+  durchgeführt. Die adaptive Regelung ist standardmäßig deaktiviert.
+- Der Python-Connector wird mit diesem Release nicht entfernt.
+
+---
+
 ## 0.4.1 – Markenübergreifende Bluetooth-Geräte
 
 - Trainer und Pulssensoren in Web- und lokaler Trainingsansicht getrennt suchen, auswählen und merken.
